@@ -17,6 +17,14 @@ def repo_root() -> Path:
     )
 
 
+def missing_proofs_message() -> str:
+    return (
+        "No local Lean proofs project was found. Expected a `proofs/` directory in the current "
+        "workspace or one of its parent directories. This plugin only searches the workspace's "
+        "Lean project; it does not ship a standalone mathlib checkout."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Search local proofs and any downloaded mathlib checkout for a query."
@@ -76,7 +84,12 @@ def emit_line(line: str) -> None:
 
 def main() -> int:
     args = parse_args()
-    root = repo_root()
+    try:
+        root = repo_root()
+    except FileNotFoundError:
+        print(missing_proofs_message(), file=sys.stderr)
+        return 2
+
     directories = candidate_dirs(root)
     available_dirs = [directory for directory in directories if directory.exists()]
 

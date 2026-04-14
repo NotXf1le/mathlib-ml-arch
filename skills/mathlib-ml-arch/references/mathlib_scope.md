@@ -27,8 +27,10 @@ Use this file to decide whether a claim belongs in the formal layer or outside i
 
 ## Local Proof Workflow
 
+- The plugin does not ship a standalone `proofs/` project. Formal checking only works when the target workspace already contains one.
 - This repo is currently pinned to Lean `4.29.0` and `mathlib` `v4.29.0`.
 - Install Lean 4 through `elan` or the direct Windows `Lean` package so `lake` is available.
 - From `proofs/`, run `lake update`.
 - Optionally run `lake exe cache get` after dependencies resolve to fetch prebuilt artifacts.
 - Keep `proofs/lean-toolchain` and `proofs/lakefile.toml` on matching release lines when you intentionally upgrade.
+- If `proofs/` is missing, report that the local Lean project is absent and keep all mathlib claims in the unverified or negative-evidence bucket.

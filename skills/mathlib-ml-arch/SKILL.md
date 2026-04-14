@@ -21,20 +21,21 @@ Use this skill to keep formal math, architecture judgment, and empirical claims 
 python "<resolved-skill-dir>/scripts/search_mathlib.py" "<query>"
 ```
 
-5. Validate candidate theorems in `proofs/ProofScratch.lean` before citing them as formal support:
+5. Confirm that the target workspace has a local Lean project at `proofs/` before treating formal verification as available. The plugin does not bundle one for you.
+6. Validate candidate theorems in `proofs/ProofScratch.lean` before citing them as formal support:
 
 ```bash
 python "<resolved-skill-dir>/scripts/lean_check.py"
 ```
 
-6. Write the response in this order:
+7. Write the response in this order:
    - Proposed architecture
    - Formal evidence from mathlib
    - Engineering inference built on top of formal facts
    - Gaps requiring benchmarks or papers
    - Risks
 
-7. For nontrivial requests, emit the artifact bundle defined in `references/architecture_contract.md`:
+8. For nontrivial requests, emit the artifact bundle defined in `references/architecture_contract.md`:
    - `report.md`
    - `evidence.json`
 
@@ -46,6 +47,7 @@ python "<resolved-skill-dir>/scripts/lean_check.py"
 - If no supporting theorem is found or verified, write `No direct formal support found in mathlib.`
 - If a theorem only proves a local property, state the exact boundary.
 - If Lean tooling is missing or the scratch file was not checked, treat the result as unverified.
+- If the workspace has no `proofs/` directory, say that formal verification was unavailable because the local Lean project is missing. Do not attribute that case to `lake`, `git`, or theorem failure.
 - For nontrivial requests, treat the artifact bundle as required rather than optional.
 
 ## Evidence Record

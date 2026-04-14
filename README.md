@@ -43,3 +43,20 @@ The plugin is skill-only. It does not ship a custom UI, widget runtime, or
 local server layer. The only runtime behavior beyond the skill itself is the
 post-write validation hook, which checks the latest review bundle for required
 sections and evidence fields.
+
+## Lean Prerequisites
+
+Formal mathlib checks are workspace-dependent. This plugin does not bundle a
+standalone `proofs/` project or a pre-fetched mathlib checkout.
+
+Before invoking `search_mathlib.py` or `lean_check.py`, the target workspace
+must provide:
+
+- `proofs/lean-toolchain`
+- `proofs/lakefile.toml`
+- `proofs/ProofScratch.lean`
+
+After Lean is installed, run `lake update` from `proofs/`.
+
+If `proofs/` is missing, agents should report that local formal verification is
+unavailable rather than blaming `lake`, `git`, or missing theorems.

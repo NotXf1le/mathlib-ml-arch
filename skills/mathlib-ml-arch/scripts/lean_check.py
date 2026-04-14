@@ -18,6 +18,15 @@ def repo_root() -> Path:
     )
 
 
+def missing_proofs_message() -> str:
+    return (
+        "No local Lean proofs project was found. Expected a `proofs/` directory in the current "
+        "workspace or one of its parent directories. This plugin does not bundle mathlib sources "
+        "by itself. Create `proofs/lean-toolchain`, `proofs/lakefile.toml`, and "
+        "`proofs/ProofScratch.lean`, then run `lake update` inside `proofs/` before retrying."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Typecheck a Lean scratch file inside the local proofs project."
@@ -68,7 +77,12 @@ def subprocess_env(lake: Path) -> dict[str, str]:
 
 def main() -> int:
     args = parse_args()
-    root = repo_root()
+    try:
+        root = repo_root()
+    except FileNotFoundError:
+        print(missing_proofs_message(), file=sys.stderr)
+        return 4
+
     proofs_dir = root / "proofs"
     target = proofs_dir / args.file
 
