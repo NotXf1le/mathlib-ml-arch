@@ -14,6 +14,7 @@ Run the second-pass adversarial verification for a mathlib-backed architecture r
 3. Correct any overstatement before finalizing.
 4. Append a `RECHECK` section with unresolved points and final verdict.
 5. Update `evidence.json` if claim labels or boundaries changed during recheck.
+6. Re-run `python scripts/validate_artifact_bundle.py --bundle-dir <dir>` after edits.
 
 ## Output Contract
 

@@ -2,11 +2,11 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/post_write_mathlib_audit_check.ps1"
+            "command": "python ./scripts/validate_artifact_bundle.py --latest"
           }
         ]
       }

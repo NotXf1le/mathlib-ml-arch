@@ -48,6 +48,10 @@ The `evidence.json` file should be machine-readable and include, at minimum, the
 
 The textual response should still follow the required output order, and the artifact bundle should not contradict it.
 
+Validate the finished bundle explicitly with:
+
+`python scripts/validate_artifact_bundle.py --bundle-dir <dir>`
+
 ## Do Not Collapse Categories
 
 - Do not present benchmark expectations as formal results.

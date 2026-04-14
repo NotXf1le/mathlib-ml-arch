@@ -15,49 +15,55 @@ Use this skill to keep formal math, architecture judgment, and empirical claims 
    - empirical or product/system constraint
 2. Read `references/architecture_contract.md` first.
 3. Read `references/mathlib_scope.md` when you need theorem families, search patterns, or local setup reminders.
-4. If the local Lean setup is unclear, inspect it first:
+4. The canonical public CLI surface for this plugin lives in the plugin-root `scripts/` directory. From this skill directory, that path is `../../scripts/`.
+5. If the local Lean setup is unclear, inspect it first:
 
 ```bash
-python "<resolved-skill-dir>/scripts/doctor.py"
+python "../../scripts/doctor.py"
 ```
 
-5. If `proofs/` is missing and the workspace should support formal checks, bootstrap it before searching:
+6. If `proofs/` is missing and the workspace should support formal checks, bootstrap it before searching:
 
 ```bash
-python "<resolved-skill-dir>/scripts/bootstrap_proofs.py"
+python "../../scripts/bootstrap_proofs.py"
 ```
 
 If bootstrap is not possible in the current workspace, say that formal verification is unavailable here.
 
-6. Search local evidence before making formal claims:
+7. Search local evidence before making formal claims:
 
 ```bash
-python "<resolved-skill-dir>/scripts/search_mathlib.py" "<query>"
+python "../../scripts/search_mathlib.py" "<query>"
 ```
 
 Use `--json` when you want machine-readable theorem candidates with names, import paths, and locations.
 
-7. Validate candidate theorems in `proofs/ProofScratch.lean` before citing them as formal support:
+8. Validate candidate theorems in `proofs/ProofScratch.lean` before citing them as formal support:
 
 ```bash
-python "<resolved-skill-dir>/scripts/lean_check.py"
+python "../../scripts/lean_check.py"
 ```
 
 The result counts as verified only when `lean_check.py` succeeds. If it falls back from `lake env lean` to direct `lean` with `LEAN_PATH`, record that verification method explicitly.
 
-8. Write the response in this order:
+9. Write the response in this order:
    - Proposed architecture
    - Formal evidence from mathlib
    - Engineering inference built on top of formal facts
    - Gaps requiring benchmarks or papers
    - Risks
 
-9. For nontrivial requests, emit the artifact bundle defined in `references/architecture_contract.md`:
+10. For nontrivial requests, emit the artifact bundle defined in `references/architecture_contract.md`:
    - `report.md`
    - `evidence.json`
    - `session_log.json` when bootstrap or verification diagnostics matter
 
    Keep the bundle consistent with the written response.
+11. Validate the artifact bundle explicitly:
+
+```bash
+python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"
+```
 
 ## Hard Rules
 
@@ -83,7 +89,8 @@ For each cited theorem or definition, record:
 
 - `references/architecture_contract.md`: required output contract and claim-labeling rules.
 - `references/mathlib_scope.md`: boundaries of what mathlib can and cannot support, plus query ideas and local setup notes.
-- `scripts/doctor.py`: inspect the local Lean/mathlib environment and emit agent-friendly diagnostics.
-- `scripts/bootstrap_proofs.py`: create `proofs/`, initialize mathlib, fetch cache when needed, and run a smoke verification pass.
-- `scripts/search_mathlib.py`: search the current repo's `proofs/` project and any downloaded mathlib checkout for ranked theorem candidates.
-- `scripts/lean_check.py`: verify `proofs/ProofScratch.lean` via `lake env lean`, with direct `lean` fallback when the official path is unavailable.
+- `../../scripts/doctor.py`: inspect the local Lean/mathlib environment and emit agent-friendly diagnostics.
+- `../../scripts/bootstrap_proofs.py`: create `proofs/`, initialize mathlib, fetch cache when needed, and run a smoke verification pass.
+- `../../scripts/search_mathlib.py`: search the current repo's `proofs/` project and any downloaded mathlib checkout for ranked theorem candidates.
+- `../../scripts/lean_check.py`: verify `proofs/ProofScratch.lean` via `lake env lean`, with direct `lean` fallback when the official path is unavailable.
+- `../../scripts/validate_artifact_bundle.py`: validate `report.md` and `evidence.json` directly, without hooks.
