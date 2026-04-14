@@ -16,6 +16,13 @@ Use this skill to keep formal math, architecture judgment, and empirical claims 
 2. Read `references/architecture_contract.md` first.
 3. Read `references/mathlib_scope.md` when you need theorem families, search patterns, or local setup reminders.
 4. The canonical public CLI surface for this plugin lives in the plugin-root `scripts/` directory. From this skill directory, that path is `../../scripts/`.
+   Formula-specific workflows can also use:
+
+```bash
+python "../../scripts/eml_normalize.py" --formula "<expr>"
+python "../../scripts/eml_verify.py" --formula "<expr>"
+python "../../scripts/boundary_classify.py" --formula "<expr>"
+```
 5. If the local Lean setup is unclear, inspect it first:
 
 ```bash
@@ -97,8 +104,12 @@ For each cited theorem or definition, record:
 
 - `references/architecture_contract.md`: required output contract and claim-labeling rules.
 - `references/mathlib_scope.md`: boundaries of what mathlib can and cannot support, plus query ideas and local setup notes.
+- `references/eml_side_conditions.md`: domain, branch, and totalization taxonomy for EML-normalized formulas.
 - `../../scripts/doctor.py`: inspect repo-local and shared Lean/mathlib environments and emit agent-friendly diagnostics.
 - `../../scripts/bootstrap_proofs.py`: create or reuse a repo-local or shared `proofs/` project, fetch cache when needed, and run a smoke verification pass.
 - `../../scripts/search_mathlib.py`: search the selected repo-local or shared `proofs/` project and any downloaded mathlib checkout for ranked theorem candidates.
 - `../../scripts/lean_check.py`: verify `proofs/ProofScratch.lean` via `lake env lean`, with direct `lean` fallback when the official path is unavailable and command timeouts recorded explicitly.
+- `../../scripts/eml_normalize.py`: parse one explicit scalar formula into CalcLang, emit EML artifacts, and write typed side-condition bundles.
+- `../../scripts/eml_verify.py`: generate `ProofScratch.lean` for the exact shipped EML subset and update evidence metadata with Lean verification status.
+- `../../scripts/boundary_classify.py`: extract domain, branch, and totalization assumptions into bundle artifacts without claiming Lean proof.
 - `../../scripts/validate_artifact_bundle.py`: validate `report.md` and `evidence.json` directly, without hooks.

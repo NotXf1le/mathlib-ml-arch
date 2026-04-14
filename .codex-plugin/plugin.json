@@ -28,7 +28,9 @@
       "Bootstrap a repo-local or shared proofs project for this workspace and verify the Lean setup",
       "Audit this ML architecture for role mixing and hidden assumption leaks",
       "Generate report.md and evidence.json for the current architecture review",
-      "Recheck the current architecture audit and tighten unsupported claims"
+      "Recheck the current architecture audit and tighten unsupported claims",
+      "Normalize this scalar formula into EML artifacts and surface side conditions",
+      "Write ProofScratch.lean for this EML normalization attempt and report whether Lean verified it"
     ]
   }
 }

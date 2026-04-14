@@ -26,6 +26,10 @@ Happy-path demo:
 7. Separate each claim into formal support, engineering inference, or empirical gap.
 8. Emit the artifact bundle required by the skill contract.
 9. Validate the bundle explicitly with `python scripts/validate_artifact_bundle.py --bundle-dir <dir>`.
+10. When the audit depends on one explicit scalar formula, prefer the EML helpers first:
+    - `python scripts/eml_normalize.py --formula "<expr>"`
+    - `python scripts/eml_verify.py --formula "<expr>"`
+    - `python scripts/boundary_classify.py --formula "<expr>"`
 
 ## Output Contract
 

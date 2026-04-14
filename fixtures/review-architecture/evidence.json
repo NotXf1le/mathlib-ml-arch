@@ -5,7 +5,16 @@
     "plain_language_meaning": "Applying an orthogonal projection twice is the same as applying it once.",
     "supported_subclaim": "Projection branch preserves a local idempotence invariant",
     "unsupported_boundary": "This does not prove better retrieval quality or optimizer stability.",
-    "claim_label": "Formal support"
+    "claim_label": "Formal support",
+    "verified_in_lean": true,
+    "verification_method": "fixture-demo",
+    "side_conditions": [
+      {
+        "kind": "domain",
+        "condition": "projection target subspace is well-typed",
+        "status": "required"
+      }
+    ]
   },
   {
     "name": "normedSpace_triangle",
@@ -13,7 +22,16 @@
     "plain_language_meaning": "The norm of a sum is bounded by the sum of the norms.",
     "supported_subclaim": "Residual merge mixes score-space and state-space semantics",
     "unsupported_boundary": "Layer shape equality does not justify adding unlike entities.",
-    "claim_label": "Partial formal support"
+    "claim_label": "Partial formal support",
+    "verified_in_lean": true,
+    "verification_method": "fixture-demo",
+    "side_conditions": [
+      {
+        "kind": "totalization",
+        "condition": "shape equality does not imply semantic compatibility",
+        "status": "boundary"
+      }
+    ]
   },
   {
     "name": "No direct formal support found in mathlib.",
@@ -21,6 +39,15 @@
     "plain_language_meaning": "No verified mathlib theorem was found for the concrete optimizer-side claim.",
     "supported_subclaim": "Gradient noise damping remains benchmark-sensitive",
     "unsupported_boundary": "No direct theorem covers the concrete optimizer and data pipeline.",
-    "claim_label": "Empirical gap"
+    "claim_label": "Empirical gap",
+    "verified_in_lean": false,
+    "verification_method": "not_run",
+    "side_conditions": [
+      {
+        "kind": "totalization",
+        "condition": "optimizer-side stability still depends on empirical stack behavior",
+        "status": "boundary"
+      }
+    ]
   }
 ]

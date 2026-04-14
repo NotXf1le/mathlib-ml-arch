@@ -45,6 +45,13 @@ The `evidence.json` file should be machine-readable and include, at minimum, the
 - `claim_label`
 - `verified_in_lean`
 - `verification_method`
+- `side_conditions`
+
+Each `side_conditions` entry should be an object with, at minimum:
+
+- `kind`
+- `condition`
+- `status`
 
 The textual response should still follow the required output order, and the artifact bundle should not contradict it.
 

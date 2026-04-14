@@ -34,10 +34,30 @@ All public runnable entrypoints live in root `scripts/`:
 - `python scripts/bootstrap_proofs.py`
 - `python scripts/search_mathlib.py "<query>"`
 - `python scripts/lean_check.py`
+- `python scripts/eml_normalize.py --formula "<expr>"`
+- `python scripts/eml_verify.py --formula "<expr>"`
+- `python scripts/boundary_classify.py --formula "<expr>"`
 
 The `skills/mathlib-ml-arch/scripts/` directory is implementation detail for the
 skill bundle. README, command docs, and the skill now all point back to root
 `scripts/` as the canonical launch surface.
+
+## EML Formula Pipeline
+
+The plugin now ships a conservative scalar formula pipeline that sits beside the
+existing bootstrap/search/check flow:
+
+- Parse one explicit formula into CalcLang v1
+- Desugar supported shorthands such as `sigmoid` and `tanh`
+- Normalize the formula deterministically
+- Extract typed side conditions (`domain`, `branch`, `totalization`)
+- Attempt pure-EML compilation for the currently shipped exact subset `{1, var, exp}`
+- Generate `ProofScratch.lean`, `report.md`, `evidence.json`, and Mermaid figures
+
+The current EML witness library is intentionally honest: parsing and boundary
+classification cover scalar arithmetic, division, logarithm, and square root,
+but exact pure-EML proofs are only shipped for the subset `{1, var, exp}`.
+Unsupported nodes stay explicit in artifacts instead of being silently guessed.
 
 ## Review Outcome
 
@@ -57,6 +77,12 @@ python scripts/validate_artifact_bundle.py --bundle-dir <dir>
 The report order and evidence fields are defined in
 `skills/mathlib-ml-arch/references/architecture_contract.md`.
 
+`evidence.json` records now include:
+
+- `verified_in_lean`
+- `verification_method`
+- `side_conditions`
+
 ## Manual Workflow
 
 When you want a live review instead of the shipped demo:
@@ -69,6 +95,13 @@ When you want a live review instead of the shipped demo:
 6. Both search and verification prefer a repo-local `proofs/` project when one exists and otherwise fall back to the shared workspace automatically.
 7. Write `report.md` and `evidence.json`.
 8. Validate the bundle with `python scripts/validate_artifact_bundle.py --bundle-dir <dir>`.
+
+For formula-specific workflows:
+
+1. Run `python scripts/eml_normalize.py --formula "<expr>"`.
+2. Inspect `artifacts/formula.json`, `artifacts/eml.json`, `figures/eml_tree.mmd`, and `figures/boundary_graph.mmd`.
+3. Run `python scripts/eml_verify.py --formula "<expr>"` when you want a `ProofScratch.lean` attempt plus Lean diagnostics.
+4. Use `python scripts/boundary_classify.py --formula "<expr>"` when you only need typed assumptions without a proof attempt.
 
 When `lake env lean` is unavailable but compiled package libraries exist,
 `lean_check.py` falls back to direct `lean` with discovered `LEAN_PATH` and

@@ -22,6 +22,15 @@ REQUIRED_EVIDENCE_FIELDS = [
     "supported_subclaim",
     "unsupported_boundary",
     "claim_label",
+    "verified_in_lean",
+    "verification_method",
+    "side_conditions",
+]
+
+REQUIRED_SIDE_CONDITION_FIELDS = [
+    "kind",
+    "condition",
+    "status",
 ]
 
 
@@ -201,6 +210,37 @@ def validate_evidence(evidence_path: Path) -> tuple[list[str], list[dict[str, ob
             if value is None or (isinstance(value, str) and not value.strip()):
                 issues.append(f"Evidence record {index} is missing '{field}'.")
 
+        verified = record.get("verified_in_lean")
+        if not isinstance(verified, bool):
+            issues.append(f"Evidence record {index} must set 'verified_in_lean' to true or false.")
+
+        verification_method = record.get("verification_method")
+        if not isinstance(verification_method, str) or not verification_method.strip():
+            issues.append(f"Evidence record {index} must set a non-empty 'verification_method'.")
+
+        side_conditions = record.get("side_conditions")
+        if not isinstance(side_conditions, list):
+            issues.append(f"Evidence record {index} must provide 'side_conditions' as an array.")
+        else:
+            for condition_index, condition in enumerate(side_conditions, start=1):
+                if not isinstance(condition, dict):
+                    issues.append(
+                        f"Evidence record {index} side condition {condition_index} must be an object."
+                    )
+                    continue
+                for field in REQUIRED_SIDE_CONDITION_FIELDS:
+                    value = condition.get(field)
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        issues.append(
+                            f"Evidence record {index} side condition {condition_index} is missing '{field}'."
+                        )
+
+        claim_label = str(record.get("claim_label", "")).casefold()
+        if claim_label == "formal support" and verified is not True:
+            issues.append(
+                f"Evidence record {index} cannot use 'Formal support' when 'verified_in_lean' is false."
+            )
+
     return issues, records
 
 
@@ -209,7 +249,7 @@ def summary_from_records(records: list[dict[str, object]]) -> dict[str, object]:
         (
             record
             for record in records
-            if str(record.get("claim_label", "")).casefold() in {"formal support", "partial formal support"}
+            if bool(record.get("verified_in_lean"))
         ),
         None,
     )
