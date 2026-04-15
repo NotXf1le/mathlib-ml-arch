@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Mathlib ML Architect",
     "shortDescription": "Audit ML architecture claims with formal support boundaries",
-    "longDescription": "Separates verified mathlib support, engineering inference, and empirical gaps; ships root-level CLI entrypoints, repo-local or shared proofs bootstrapping, and direct artifact validation without depending on hooks.",
+    "longDescription": "Separates verified mathlib support, engineering inference, and empirical gaps; ships root-level CLI entrypoints, shared proofs bootstrapping with auto-repair for partial workspaces, and direct artifact validation without depending on hooks.",
     "developerName": "Felix",
     "category": "Productivity",
     "capabilities": [
@@ -25,7 +25,7 @@
     ],
     "defaultPrompt": [
       "Run the explicit demo review flow and emit report.md plus evidence.json",
-      "Bootstrap a repo-local or shared proofs project for this workspace and verify the Lean setup",
+      "Bootstrap or repair the shared proofs project for this workspace and verify the Lean setup",
       "Audit this ML architecture for role mixing and hidden assumption leaks",
       "Generate report.md and evidence.json for the current architecture review",
       "Recheck the current architecture audit and tighten unsupported claims",

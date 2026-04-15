@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from common import configure_stdout, requested_workspace_root, resolve_proofs_workspace
+from common import ensure_shared_proofs_workspace
 from eml_pipeline import (
     analyze_formula,
     build_evidence_record,
@@ -47,6 +48,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--lean-mode", choices=["auto", "lake", "direct"], default="auto", help="Verification mode forwarded to lean_check.py.")
     parser.add_argument("--timeout-seconds", type=int, default=60, help="Per-command timeout forwarded to lean_check.py.")
+    parser.add_argument(
+        "--bootstrap-timeout-seconds",
+        type=int,
+        default=60,
+        help="Timeout used when the script needs to bootstrap the shared proofs workspace automatically.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable output.")
     return parser.parse_args()
 
@@ -159,6 +166,7 @@ def main() -> int:
     verified_in_lean = False
     verification_method = "not_run"
     scratch_target: str | None = None
+    bootstrap_payload: dict[str, object] | None = None
 
     layout["formula_json"].write_text(
         json.dumps(
@@ -193,7 +201,13 @@ def main() -> int:
         layout["boundary_graph_mmd"].write_text(boundary_mermaid(analysis["normalized_text"], side_conditions), encoding="utf-8")
 
         proof_source = proof_file_source(analysis.get("binding_name"), normalized_expr, compile_result, side_conditions)
-        proofs_root, selected_scope = resolve_proofs_workspace(workspace, args.scope)
+        proofs_root, selected_scope, workspace_status, bootstrap_payload = ensure_shared_proofs_workspace(
+            workspace,
+            timeout_seconds=args.bootstrap_timeout_seconds,
+            require_verification=True,
+        )
+        if proofs_root is None or not bool(workspace_status.get("proofs_exists")):
+            proofs_root, selected_scope = resolve_proofs_workspace(workspace, args.scope)
         if proofs_root is not None:
             proofs_dir = proofs_root / "proofs"
             scratch_path = Path(args.scratch_file)
@@ -213,8 +227,9 @@ def main() -> int:
         else:
             lean_payload = {
                 "success": False,
-                "verification_method": "unavailable:no proofs workspace",
-                "error": "No usable shared proofs workspace was found. Run bootstrap_proofs.py first.",
+                "verification_method": "unavailable:bootstrap_failed",
+                "error": "No usable shared proofs workspace was found after automatic bootstrap.",
+                "bootstrap": bootstrap_payload,
             }
             verification_method = str(lean_payload["verification_method"])
 
@@ -302,6 +317,7 @@ def main() -> int:
         "compile_status": compile_status,
         "verified_in_lean": verified_in_lean,
         "verification_method": verification_method,
+        "bootstrap": bootstrap_payload,
         "validation": validation,
     }
 

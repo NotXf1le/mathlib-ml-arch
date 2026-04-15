@@ -102,6 +102,10 @@ shared workspace. The JSON payload and human output record the effective `HOME`
 / `ELAN_HOME`, warnings, and postconditions so partial bootstrap progress is
 easier to diagnose. Repo-local `proofs/` directories are detected and surfaced
 as ignored legacy state instead of being used for verification.
+When `search_mathlib.py`, `lean_check.py`, or `eml_verify.py` encounter a
+missing or partial shared workspace, they now attempt shared bootstrap
+automatically before giving up, and surface bootstrap/network diagnostics in
+their JSON output.
 
 `bootstrap_toolchain.py` prefers a plugin-local toolchain cache before the host
 profile. It first reuses any cached `lake` / `lean`, then tries to copy the

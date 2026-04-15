@@ -12,11 +12,11 @@ from common import (
     build_lean_path,
     configure_stdout,
     discover_package_lib_dirs,
+    ensure_shared_proofs_workspace,
     git_safe_directories_for_proofs,
     find_lake,
     find_lean,
     requested_workspace_root,
-    resolve_proofs_workspace,
     shared_workspace_root,
     subprocess_env_for_tool,
 )
@@ -60,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=120,
         help="Per-command timeout for `lake env lean` and direct `lean` invocations.",
+    )
+    parser.add_argument(
+        "--bootstrap-timeout-seconds",
+        type=int,
+        default=60,
+        help="Timeout used when the script needs to bootstrap the shared proofs workspace automatically.",
     )
     parser.add_argument(
         "--json",
@@ -140,20 +146,32 @@ def main() -> int:
     configure_stdout()
     args = parse_args()
     requested_workspace = requested_workspace_root(args.workspace)
-    root, selected_scope = resolve_proofs_workspace(requested_workspace, args.scope)
-    if root is None:
+    root, selected_scope, workspace_status, bootstrap_payload = ensure_shared_proofs_workspace(
+        requested_workspace,
+        timeout_seconds=args.bootstrap_timeout_seconds,
+        require_verification=True,
+    )
+    if root is None or not bool(workspace_status.get("ready_for_verification")):
+        error = missing_proofs_message(args.scope)
+        if bootstrap_payload is not None:
+            error = (
+                "Shared proofs workspace is not ready for Lean verification even after bootstrap. "
+                f"Bootstrap status: {bootstrap_payload.get('status', 'failure')}."
+            )
         payload = {
             "success": False,
-            "error": missing_proofs_message(args.scope),
+            "error": error,
             "requested_workspace": str(requested_workspace),
-            "workspace_root": str(requested_workspace),
-            "selected_scope": None,
+            "workspace_root": str(root) if root else str(requested_workspace),
+            "selected_scope": selected_scope,
             "shared_workspace_root": str(shared_workspace_root()),
+            "verification_method": "unavailable:bootstrap_failed",
+            "bootstrap": bootstrap_payload,
         }
         if args.json:
             print(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            print(missing_proofs_message(args.scope), file=sys.stderr)
+            print(error, file=sys.stderr)
         return 4
 
     proofs_dir = root / "proofs"
@@ -196,6 +214,7 @@ def main() -> int:
         "library_path_count": len(lib_dirs),
         "methods": [],
         "verification_method": None,
+        "bootstrap": bootstrap_payload,
     }
 
     if args.mode in {"auto", "lake"} and lake is not None:

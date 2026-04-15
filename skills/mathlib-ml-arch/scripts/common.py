@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -500,6 +502,107 @@ def discover_package_lib_dirs(proofs_dir: Path) -> list[Path]:
 
 def build_lean_path(proofs_dir: Path) -> str:
     return os.pathsep.join(str(path) for path in discover_package_lib_dirs(proofs_dir))
+
+
+def proofs_workspace_status(root: Path | None) -> dict[str, object]:
+    if root is None:
+        return {
+            "workspace_root": None,
+            "proofs_dir": None,
+            "proofs_exists": False,
+            "lean_toolchain_exists": False,
+            "lakefile_exists": False,
+            "proof_scratch_exists": False,
+            "mathlib_source_exists": False,
+            "package_library_paths": [],
+            "package_library_path_count": 0,
+            "ready_for_search": False,
+            "ready_for_verification": False,
+        }
+
+    proofs_dir = root / "proofs"
+    proof_scratch = proofs_dir / "ProofScratch.lean"
+    mathlib_source = proofs_dir / ".lake" / "packages" / "mathlib" / "Mathlib"
+    lib_dirs = discover_package_lib_dirs(proofs_dir) if proofs_dir.exists() else []
+    proofs_exists = proofs_dir.is_dir()
+    lean_toolchain_exists = (proofs_dir / "lean-toolchain").exists()
+    lakefile_exists = (proofs_dir / "lakefile.toml").exists()
+    proof_scratch_exists = proof_scratch.exists()
+    mathlib_source_exists = mathlib_source.exists()
+    ready_for_search = proofs_exists and mathlib_source_exists
+    ready_for_verification = (
+        ready_for_search
+        and lean_toolchain_exists
+        and lakefile_exists
+        and proof_scratch_exists
+        and len(lib_dirs) > 0
+    )
+
+    return {
+        "workspace_root": str(root),
+        "proofs_dir": str(proofs_dir),
+        "proofs_exists": proofs_exists,
+        "lean_toolchain_exists": lean_toolchain_exists,
+        "lakefile_exists": lakefile_exists,
+        "proof_scratch_exists": proof_scratch_exists,
+        "mathlib_source_exists": mathlib_source_exists,
+        "package_library_paths": [str(path) for path in lib_dirs],
+        "package_library_path_count": len(lib_dirs),
+        "ready_for_search": ready_for_search,
+        "ready_for_verification": ready_for_verification,
+    }
+
+
+def run_bootstrap_proofs(requested_workspace: Path, timeout_seconds: int = 60) -> dict[str, object]:
+    bootstrap_script = Path(__file__).with_name("bootstrap_proofs.py")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(bootstrap_script),
+            "--workspace",
+            str(requested_workspace),
+            "--scope",
+            "shared",
+            "--timeout-seconds",
+            str(timeout_seconds),
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        payload = {
+            "success": False,
+            "status": "failure",
+            "error": "bootstrap_proofs.py returned unreadable output.",
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+    payload["bootstrap_exit_code"] = result.returncode
+    return payload
+
+
+def ensure_shared_proofs_workspace(
+    requested_workspace: Path,
+    timeout_seconds: int = 60,
+    require_verification: bool = False,
+) -> tuple[Path | None, str | None, dict[str, object], dict[str, object] | None]:
+    root, selected_scope = resolve_proofs_workspace(requested_workspace, "shared")
+    status = proofs_workspace_status(root)
+    ready_key = "ready_for_verification" if require_verification else "ready_for_search"
+    if bool(status.get(ready_key)):
+        return root, selected_scope, status, None
+
+    bootstrap_payload = run_bootstrap_proofs(requested_workspace, timeout_seconds=timeout_seconds)
+    root, selected_scope = resolve_proofs_workspace(requested_workspace, "shared")
+    status = proofs_workspace_status(root)
+    return root, selected_scope, status, bootstrap_payload
 
 
 def default_project_name(workspace_root: Path) -> str:

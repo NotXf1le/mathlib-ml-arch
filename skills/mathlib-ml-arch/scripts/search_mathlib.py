@@ -8,7 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import configure_stdout, requested_workspace_root, resolve_proofs_workspace, shared_workspace_root
+from common import (
+    configure_stdout,
+    ensure_shared_proofs_workspace,
+    requested_workspace_root,
+    resolve_proofs_workspace,
+    shared_workspace_root,
+)
 
 
 DECLARATION_RE = re.compile(
@@ -64,6 +70,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=50,
         help="Maximum number of matches to print.",
+    )
+    parser.add_argument(
+        "--bootstrap-timeout-seconds",
+        type=int,
+        default=60,
+        help="Timeout used when the script needs to bootstrap the shared proofs workspace automatically.",
     )
     return parser.parse_args()
 
@@ -299,9 +311,36 @@ def main() -> int:
     configure_stdout()
     args = parse_args()
     requested_workspace = requested_workspace_root(args.workspace)
-    root, selected_scope = resolve_proofs_workspace(requested_workspace, args.scope)
-    if root is None:
-        print(missing_proofs_message(args.scope), file=sys.stderr)
+    root, selected_scope, workspace_status, bootstrap_payload = ensure_shared_proofs_workspace(
+        requested_workspace,
+        timeout_seconds=args.bootstrap_timeout_seconds,
+        require_verification=False,
+    )
+    if root is None or not bool(workspace_status.get("ready_for_search")):
+        error = missing_proofs_message(args.scope)
+        if bootstrap_payload is not None:
+            error = (
+                "Shared proofs workspace is not ready for theorem search even after bootstrap. "
+                f"Bootstrap status: {bootstrap_payload.get('status', 'failure')}."
+            )
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "requested_workspace": str(requested_workspace),
+                        "workspace_root": str(root) if root else None,
+                        "selected_scope": selected_scope,
+                        "query": args.query,
+                        "mode": args.mode,
+                        "error": error,
+                        "bootstrap": bootstrap_payload,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            print(error, file=sys.stderr)
         return 2
 
     directories = candidate_dirs(root)
@@ -360,6 +399,7 @@ def main() -> int:
             "selected_scope": selected_scope,
             "query": args.query,
             "mode": args.mode,
+            "bootstrap": bootstrap_payload,
             "candidates": candidates if args.mode in {"candidates", "both"} else [],
             "raw_matches": raw_hits if args.mode in {"raw", "both"} else [],
         }

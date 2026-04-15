@@ -45,6 +45,8 @@ def runtime_ready() -> bool:
             "direct",
             "--timeout-seconds",
             "5",
+            "--bootstrap-timeout-seconds",
+            "5",
             "--json",
         ],
         cwd=WORKSPACE_ROOT,

@@ -43,6 +43,7 @@ python "../../scripts/bootstrap_proofs.py"
 
 That command creates or reuses the shared user-scoped workspace under `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace`.
 Repo-local `proofs/` directories are treated as legacy state and ignored by the formal-workspace resolver.
+If the shared workspace exists but is missing mathlib sources or compiled libraries, rerun `bootstrap_proofs.py` rather than concluding that formal verification is impossible.
 
 If bootstrap is not possible in the current environment, say that formal verification is unavailable here.
 
@@ -89,6 +90,7 @@ python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"
 - If Lean tooling is missing or `lean_check.py` does not succeed, treat the result as unverified.
 - If Lean verification was unavailable or not run, say that formal support from Lean/mathlib was not obtained in this environment. Do not collapse that state into negative theorem evidence.
 - If the shared proofs workspace does not exist yet, say that formal verification was unavailable because bootstrap was not run or the shared workspace is unusable. Do not attribute that case to theorem failure.
+- If `doctor.py` reports a partial shared workspace, do not stop there. Run an action script or `bootstrap_proofs.py` so the plugin can attempt automatic repair before declaring the formal layer unavailable.
 - If fallback verification was used, record the exact verification method rather than implying the official `lake env lean` path succeeded.
 - For nontrivial requests, treat the artifact bundle as required rather than optional.
 

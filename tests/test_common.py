@@ -17,6 +17,58 @@ import common  # noqa: E402
 
 
 class CommonTests(unittest.TestCase):
+    def test_proofs_workspace_status_requires_mathlib_sources_for_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proofs_dir = root / "proofs"
+            proofs_dir.mkdir()
+            (proofs_dir / "lean-toolchain").write_text("leanprover/lean4:stable", encoding="utf-8")
+            (proofs_dir / "lakefile.toml").write_text("[package]\nname = \"Demo\"\n", encoding="utf-8")
+            (proofs_dir / "ProofScratch.lean").write_text("import Mathlib\n", encoding="utf-8")
+
+            status = common.proofs_workspace_status(root)
+
+            self.assertTrue(status["proofs_exists"])
+            self.assertFalse(status["mathlib_source_exists"])
+            self.assertFalse(status["ready_for_search"])
+            self.assertFalse(status["ready_for_verification"])
+
+    def test_ensure_shared_proofs_workspace_runs_bootstrap_for_partial_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            requested = Path(tmp)
+            shared = requested / "shared_workspace"
+            before = {
+                "proofs_exists": True,
+                "mathlib_source_exists": False,
+                "package_library_path_count": 0,
+                "ready_for_search": False,
+                "ready_for_verification": False,
+            }
+            after = {
+                "proofs_exists": True,
+                "mathlib_source_exists": True,
+                "package_library_path_count": 1,
+                "ready_for_search": True,
+                "ready_for_verification": True,
+            }
+
+            with (
+                patch.object(common, "resolve_proofs_workspace", side_effect=[(shared, "shared"), (shared, "shared")]),
+                patch.object(common, "proofs_workspace_status", side_effect=[before, after]),
+                patch.object(common, "run_bootstrap_proofs", return_value={"status": "success", "success": True}),
+            ):
+                root, scope, status, bootstrap = common.ensure_shared_proofs_workspace(
+                    requested,
+                    timeout_seconds=30,
+                    require_verification=True,
+                )
+
+            self.assertEqual(root, shared)
+            self.assertEqual(scope, "shared")
+            self.assertTrue(status["ready_for_verification"])
+            self.assertIsNotNone(bootstrap)
+            self.assertEqual(bootstrap["status"], "success")
+
     def test_resolve_proofs_workspace_ignores_repo_local_and_uses_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

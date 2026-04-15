@@ -20,6 +20,7 @@ from common import (
     path_contains,
     requested_workspace_root,
     resolve_proofs_workspace,
+    proofs_workspace_status,
     shared_workspace_root,
     subprocess_env_for_tool,
     writability_error,
@@ -97,6 +98,7 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
 
     shared_workspace_write_error = writability_error(shared_config_root)
     selected_workspace_write_error = writability_error(inspected_root)
+    workspace_status = proofs_workspace_status(workspace_root)
 
     payload = {
         "platform": {
@@ -139,9 +141,9 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
         "codex_home": str(codex_home()),
         "tool_home": tool_env.get("HOME"),
         "tool_elan_home": tool_env.get("ELAN_HOME"),
-        "ready_for_search": proofs_dir.is_dir() and lean_source_count > 0,
-        "ready_for_lake_check": proofs_dir.is_dir() and lake is not None and proof_scratch.exists(),
-        "ready_for_direct_lean": proofs_dir.is_dir() and lean is not None and proof_scratch.exists() and len(lib_dirs) > 0,
+        "ready_for_search": bool(workspace_status["ready_for_search"]),
+        "ready_for_lake_check": bool(workspace_status["ready_for_search"]) and lake is not None and proof_scratch.exists(),
+        "ready_for_direct_lean": bool(workspace_status["ready_for_verification"]) and lean is not None,
         "next_steps": [],
     }
 
@@ -171,11 +173,15 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
             "Run bootstrap_toolchain.py to populate the plugin-local Lean toolchain cache, or install Lean 4 globally so `lean` is available."
         )
     if payload["proofs_exists"] and not payload["mathlib_source_exists"]:
-        next_steps.append("Run `lake update` inside proofs/ to fetch mathlib sources.")
+        next_steps.append(
+            "Run `bootstrap_proofs.py` to populate the shared proofs workspace, fetch mathlib sources, and refresh the package cache."
+        )
     if payload["proofs_exists"] and len(lib_dirs) == 0:
-        next_steps.append("Run `lake exe cache get` or build the proofs project to populate `.olean` files.")
+        next_steps.append(
+            "Run `bootstrap_proofs.py` to populate compiled package libraries for the shared proofs workspace."
+        )
     if payload["proofs_exists"] and not payload["proof_scratch_exists"]:
-        next_steps.append("Create proofs/ProofScratch.lean for theorem verification.")
+        next_steps.append("Run `bootstrap_proofs.py` to recreate `proofs/ProofScratch.lean` in the shared workspace.")
 
     payload["next_steps"] = next_steps
     return payload
