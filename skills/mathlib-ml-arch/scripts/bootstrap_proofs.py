@@ -26,6 +26,7 @@ from common import (
     normalize_lean_toolchain,
     read_text_if_exists,
     requested_workspace_root,
+    run_verification_readiness_check,
     shared_workspace_root,
     subprocess_env_for_tool,
     writability_error,
@@ -680,7 +681,20 @@ def main() -> int:
                 append_unique(payload["next_steps"], cache_step["guidance"])
 
     mathlib_artifact = mathlib_module_artifact(proofs_dir)
-    if can_attempt_cache and should_build_mathlib and not mathlib_artifact.exists():
+    build_required = can_attempt_cache and should_build_mathlib and not mathlib_artifact.exists()
+    if can_attempt_cache and should_build_mathlib and mathlib_artifact.exists():
+        readiness_smoke = run_verification_readiness_check(
+            proofs_dir,
+            timeout_seconds=args.timeout_seconds,
+        )
+        if not bool(readiness_smoke.get("success")):
+            build_required = True
+            append_unique(
+                payload["warnings"],
+                "The shared Mathlib import smoke check failed even though `Mathlib.olean` exists, so bootstrap will force `lake build Mathlib`.",
+            )
+
+    if build_required:
         build_step = run_command(
             [str(lake), "build", "Mathlib"],
             cwd=proofs_dir,
@@ -765,13 +779,15 @@ def main() -> int:
         and mathlib_artifact.exists()
         and len(package_lib_dirs) > 0
     )
+    verification_success = bool(payload["verification"].get("success")) if payload["verification"] else None
+    if should_run_verify and verification_success is False:
+        verification_ready = False
     if verification_ready:
         readiness_level = "verification-ready"
     elif search_ready:
         readiness_level = "search-ready"
     else:
         readiness_level = "incomplete"
-    verification_success = bool(payload["verification"].get("success")) if payload["verification"] else None
     payload["postconditions"] = {
         "mathlib_source_exists": mathlib_source.exists(),
         "mathlib_artifact_exists": mathlib_artifact.exists(),

@@ -67,6 +67,38 @@ class CommonTests(unittest.TestCase):
             self.assertFalse(status["ready_for_verification"])
             self.assertEqual(status["readiness_level"], "search-ready")
 
+    def test_proofs_workspace_status_downgrades_verify_when_smoke_check_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proofs_dir = root / "proofs"
+            mathlib_dir = proofs_dir / ".lake" / "packages" / "mathlib"
+            lib_dir = mathlib_dir / ".lake" / "build" / "lib" / "lean"
+            lib_dir.mkdir(parents=True)
+            (proofs_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0", encoding="utf-8")
+            (proofs_dir / "lakefile.toml").write_text("[package]\nname = \"Demo\"\n", encoding="utf-8")
+            (proofs_dir / "ProofScratch.lean").write_text("import Mathlib\n", encoding="utf-8")
+            (mathlib_dir / "Mathlib").mkdir(parents=True, exist_ok=True)
+            (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0", encoding="utf-8")
+            (lib_dir / "Mathlib.olean").write_text("", encoding="utf-8")
+
+            with patch.object(
+                common,
+                "run_verification_readiness_check",
+                return_value={
+                    "checked": True,
+                    "success": False,
+                    "verification_method": "lake env lean",
+                    "error": "Mathlib import failed.",
+                },
+            ):
+                status = common.proofs_workspace_status(root, verify_with_tooling=True)
+
+            self.assertTrue(status["ready_for_search"])
+            self.assertFalse(status["ready_for_verification"])
+            self.assertEqual(status["readiness_level"], "search-ready")
+            self.assertIsNotNone(status["verification_smoke"])
+            self.assertFalse(status["verification_smoke"]["success"])
+
     def test_proofs_workspace_status_marks_toolchain_mismatch_not_ready_for_verification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -140,6 +172,40 @@ class CommonTests(unittest.TestCase):
             self.assertTrue(status["ready_for_verification"])
             self.assertIsNotNone(bootstrap)
             self.assertEqual(bootstrap["status"], "success")
+
+    def test_ensure_shared_proofs_workspace_skips_bootstrap_when_search_ready_but_verify_broken(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            requested = Path(tmp)
+            shared = requested / "shared_workspace"
+            status = {
+                "proofs_exists": True,
+                "mathlib_source_exists": True,
+                "package_library_path_count": 8,
+                "ready_for_search": True,
+                "ready_for_verification": False,
+                "verification_smoke": {
+                    "checked": True,
+                    "success": False,
+                    "error": "Mathlib import failed.",
+                },
+            }
+
+            with (
+                patch.object(common, "resolve_proofs_workspace", return_value=(shared, "shared")),
+                patch.object(common, "proofs_workspace_status", return_value=status),
+                patch.object(common, "run_bootstrap_proofs") as bootstrap_mock,
+            ):
+                root, scope, resolved_status, bootstrap = common.ensure_shared_proofs_workspace(
+                    requested,
+                    timeout_seconds=30,
+                    require_verification=True,
+                )
+
+            self.assertEqual(root, shared)
+            self.assertEqual(scope, "shared")
+            self.assertEqual(resolved_status, status)
+            self.assertIsNone(bootstrap)
+            bootstrap_mock.assert_not_called()
 
     def test_resolve_proofs_workspace_ignores_repo_local_and_uses_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

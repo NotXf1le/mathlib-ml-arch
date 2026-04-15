@@ -98,7 +98,8 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
 
     shared_workspace_write_error = writability_error(shared_config_root)
     selected_workspace_write_error = writability_error(inspected_root)
-    workspace_status = proofs_workspace_status(workspace_root)
+    workspace_status = proofs_workspace_status(workspace_root, verify_with_tooling=True)
+    verification_smoke = workspace_status.get("verification_smoke")
 
     payload = {
         "platform": {
@@ -146,7 +147,12 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
         "tool_home": tool_env.get("HOME"),
         "tool_elan_home": tool_env.get("ELAN_HOME"),
         "ready_for_search": bool(workspace_status["ready_for_search"]),
+        "ready_for_verification": bool(workspace_status["ready_for_verification"]),
         "readiness_level": str(workspace_status["readiness_level"]),
+        "verification_smoke_checked": verification_smoke is not None,
+        "verification_smoke_success": verification_smoke.get("success") if isinstance(verification_smoke, dict) else None,
+        "verification_smoke_method": verification_smoke.get("verification_method") if isinstance(verification_smoke, dict) else None,
+        "verification_smoke_error": verification_smoke.get("error") if isinstance(verification_smoke, dict) else None,
         "ready_for_lake_check": bool(workspace_status["ready_for_verification"]) and lake is not None and proof_scratch.exists(),
         "ready_for_direct_lean": bool(workspace_status["ready_for_verification"]) and lean is not None,
         "next_steps": [],
@@ -192,6 +198,10 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
     if payload["proofs_exists"] and payload["mathlib_source_exists"] and not payload["mathlib_artifact_exists"]:
         next_steps.append(
             "Run `python scripts/setup_plugin.py --target verify` to fetch or build `Mathlib.olean` for the shared proofs workspace."
+        )
+    if payload["verification_smoke_checked"] and payload["verification_smoke_success"] is False:
+        next_steps.append(
+            "Run `python scripts/setup_plugin.py --target verify --yes` again. If the shared environment still fails the import smoke test, inspect `python scripts/lean_check.py --json` because the cached Mathlib build is incomplete."
         )
     if payload["proofs_exists"] and not payload["proof_scratch_exists"]:
         next_steps.append("Run `python scripts/setup_plugin.py --target search` to recreate `proofs/ProofScratch.lean` in the shared workspace.")

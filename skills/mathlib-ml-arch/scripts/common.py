@@ -12,6 +12,12 @@ from pathlib import Path
 
 WINDOWS = os.name == "nt"
 PLUGIN_SLUG = "mathlib-ml-arch"
+READINESS_SMOKE_TIMEOUT_SECONDS = 120
+READINESS_SMOKE_FILENAME = "__CodexVerificationReadiness.lean"
+READINESS_SMOKE_SOURCE = """import Mathlib
+
+#check True.intro
+"""
 
 
 def configure_stdout() -> None:
@@ -531,6 +537,122 @@ def mathlib_module_artifact(proofs_dir: Path) -> Path:
     return proofs_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "lib" / "lean" / "Mathlib.olean"
 
 
+def _coerce_command_output(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _run_readiness_command(
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout_seconds: int,
+) -> dict[str, object]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+        return {
+            "command": command,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "success": result.returncode == 0,
+            "timed_out": False,
+            "timeout_seconds": timeout_seconds,
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": command,
+            "returncode": None,
+            "stdout": _coerce_command_output(exc.stdout),
+            "stderr": (
+                f"{_coerce_command_output(exc.stderr).rstrip()}\n"
+                f"Command timed out after {timeout_seconds} seconds."
+            ).strip(),
+            "success": False,
+            "timed_out": True,
+            "timeout_seconds": timeout_seconds,
+        }
+
+
+def run_verification_readiness_check(
+    proofs_dir: Path,
+    timeout_seconds: int = READINESS_SMOKE_TIMEOUT_SECONDS,
+) -> dict[str, object]:
+    target = proofs_dir / READINESS_SMOKE_FILENAME
+    lake = find_lake()
+    lean = find_lean(lake)
+    payload: dict[str, object] = {
+        "checked": True,
+        "success": False,
+        "target": str(target),
+        "verification_method": None,
+        "methods": [],
+    }
+
+    target.write_text(READINESS_SMOKE_SOURCE, encoding="utf-8")
+    try:
+        relative_target = target.name
+        if lake is not None:
+            lake_env = subprocess_env_for_tool(lake)
+            add_git_safe_directories(lake_env, git_safe_directories_for_proofs(proofs_dir))
+            record = _run_readiness_command(
+                [str(lake), "env", "lean", relative_target],
+                cwd=proofs_dir,
+                env=lake_env,
+                timeout_seconds=timeout_seconds,
+            )
+            record["name"] = "lake env lean"
+            payload["methods"].append(record)
+            if record["success"]:
+                payload["success"] = True
+                payload["verification_method"] = "lake env lean"
+                return payload
+
+        lib_dirs = discover_package_lib_dirs(proofs_dir)
+        if lean is not None and lib_dirs:
+            lean_env = subprocess_env_for_tool(lean)
+            lean_path = build_lean_path(proofs_dir)
+            existing_path = lean_env.get("LEAN_PATH", "")
+            lean_env["LEAN_PATH"] = f"{lean_path}{os.pathsep}{existing_path}" if existing_path else lean_path
+            record = _run_readiness_command(
+                [str(lean), relative_target],
+                cwd=proofs_dir,
+                env=lean_env,
+                timeout_seconds=timeout_seconds,
+            )
+            record["name"] = "direct lean with LEAN_PATH"
+            payload["methods"].append(record)
+            if record["success"]:
+                payload["success"] = True
+                payload["verification_method"] = "direct lean with LEAN_PATH fallback"
+                return payload
+
+        if payload["methods"]:
+            last = payload["methods"][-1]
+            payload["error"] = str(last.get("stderr") or last.get("stdout") or "Verification readiness smoke check failed.")
+        else:
+            payload["error"] = "No usable `lake` or `lean` command was available for the verification readiness smoke check."
+        return payload
+    finally:
+        try:
+            target.unlink()
+        except OSError:
+            pass
+
+
 def read_text_if_exists(path: Path) -> str | None:
     try:
         text = path.read_text(encoding="utf-8")
@@ -565,7 +687,11 @@ def mathlib_revision_for_toolchain(value: str | None) -> str | None:
     return normalized
 
 
-def proofs_workspace_status(root: Path | None) -> dict[str, object]:
+def proofs_workspace_status(
+    root: Path | None,
+    verify_with_tooling: bool = False,
+    verify_timeout_seconds: int = READINESS_SMOKE_TIMEOUT_SECONDS,
+) -> dict[str, object]:
     if root is None:
         return {
             "workspace_root": None,
@@ -581,6 +707,7 @@ def proofs_workspace_status(root: Path | None) -> dict[str, object]:
             "mathlib_artifact_exists": False,
             "package_library_paths": [],
             "package_library_path_count": 0,
+            "verification_smoke": None,
             "ready_for_search": False,
             "ready_for_verification": False,
             "readiness_level": "incomplete",
@@ -616,6 +743,14 @@ def proofs_workspace_status(root: Path | None) -> dict[str, object]:
         and mathlib_artifact_exists
         and len(lib_dirs) > 0
     )
+    verification_smoke: dict[str, object] | None = None
+    if verify_with_tooling and ready_for_verification:
+        verification_smoke = run_verification_readiness_check(
+            proofs_dir,
+            timeout_seconds=verify_timeout_seconds,
+        )
+        if not bool(verification_smoke.get("success")):
+            ready_for_verification = False
     if ready_for_verification:
         readiness_level = "verification-ready"
     elif ready_for_search:
@@ -637,6 +772,7 @@ def proofs_workspace_status(root: Path | None) -> dict[str, object]:
         "mathlib_artifact_exists": mathlib_artifact_exists,
         "package_library_paths": [str(path) for path in lib_dirs],
         "package_library_path_count": len(lib_dirs),
+        "verification_smoke": verification_smoke,
         "ready_for_search": ready_for_search,
         "ready_for_verification": ready_for_verification,
         "readiness_level": readiness_level,
@@ -693,9 +829,12 @@ def ensure_shared_proofs_workspace(
     require_verification: bool = False,
 ) -> tuple[Path | None, str | None, dict[str, object], dict[str, object] | None]:
     root, selected_scope = resolve_proofs_workspace(requested_workspace, "shared")
-    status = proofs_workspace_status(root)
+    status = proofs_workspace_status(root, verify_with_tooling=require_verification)
     ready_key = "ready_for_verification" if require_verification else "ready_for_search"
     if bool(status.get(ready_key)):
+        return root, selected_scope, status, None
+
+    if require_verification and bool(status.get("ready_for_search")):
         return root, selected_scope, status, None
 
     # Automatic repair stays on the lightweight search-ready path. Full
@@ -706,7 +845,7 @@ def ensure_shared_proofs_workspace(
         target="search",
     )
     root, selected_scope = resolve_proofs_workspace(requested_workspace, "shared")
-    status = proofs_workspace_status(root)
+    status = proofs_workspace_status(root, verify_with_tooling=require_verification)
     return root, selected_scope, status, bootstrap_payload
 
 

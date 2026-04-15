@@ -93,6 +93,12 @@ def missing_requirements(payload: dict[str, object], target: str) -> list[str]:
         append_unique(missing, "compiled package libraries are missing")
     if target == "verify" and not bool(payload.get("mathlib_artifact_exists")):
         append_unique(missing, "Mathlib.olean is missing")
+    if (
+        target == "verify"
+        and bool(payload.get("verification_smoke_checked"))
+        and payload.get("verification_smoke_success") is False
+    ):
+        append_unique(missing, "the shared Mathlib import smoke check is failing")
     return missing
 
 
