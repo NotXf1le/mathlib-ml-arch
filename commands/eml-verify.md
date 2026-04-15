@@ -1,6 +1,6 @@
 # /eml-verify
 
-Generate `ProofScratch.lean` for one EML normalization attempt and run `lean_check.py`.
+Generate a workspace-namespaced scratch Lean file for one EML normalization attempt and run `lean_check.py`.
 
 ## Canonical Entry Point
 
@@ -8,7 +8,7 @@ Generate `ProofScratch.lean` for one EML normalization attempt and run `lean_che
 
 ## Outputs
 
-- `proofs/ProofScratch.lean`
+- a workspace-namespaced scratch file under shared `proofs/`
 - `session_log.json`
 - `evidence.json`
 - `report.md`

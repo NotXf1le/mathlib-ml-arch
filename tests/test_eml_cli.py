@@ -15,9 +15,6 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 
 
 def default_workspace_root() -> Path:
-    for candidate in [PLUGIN_ROOT.parent.parent, *PLUGIN_ROOT.parents]:
-        if (candidate / "proofs").exists():
-            return candidate
     return PLUGIN_ROOT
 
 
@@ -27,6 +24,7 @@ if str(SKILL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_SCRIPT_DIR))
 
 from common import find_lake, find_lean, resolve_proofs_workspace  # noqa: E402
+from eml_verify import default_scratch_relpath  # noqa: E402
 
 
 def runtime_ready() -> bool:
@@ -65,6 +63,13 @@ def runtime_ready() -> bool:
 
 
 class EmlCliTests(unittest.TestCase):
+    def test_default_scratch_relpath_is_namespaced_by_workspace(self) -> None:
+        scratch = default_scratch_relpath(Path(r"C:\Workspaces\My Project"))
+
+        self.assertEqual(scratch.parent, Path("scratch"))
+        self.assertTrue(scratch.name.startswith("ProofScratch_My_Project_"))
+        self.assertEqual(scratch.suffix, ".lean")
+
     def run_script(self, script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"

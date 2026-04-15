@@ -58,7 +58,7 @@ def find_existing_proofs_root(start: str | Path | None = None) -> Path | None:
 
 
 def infer_workspace_root(start: str | Path | None = None) -> Path:
-    return find_existing_proofs_root(start) or requested_workspace_root(start)
+    return requested_workspace_root(start)
 
 
 def existing_parent_for_probe(path: Path) -> Path:
@@ -238,25 +238,9 @@ def resolve_proofs_workspace(
     scope: str = "auto",
     plugin_slug: str = PLUGIN_SLUG,
 ) -> tuple[Path | None, str | None]:
-    local_root = find_existing_proofs_root(start)
     shared_root = find_shared_proofs_root(plugin_slug)
-
-    if scope == "local":
-        if local_root is None:
-            return None, None
-        resolved_scope = "shared" if is_shared_workspace(local_root, plugin_slug) else "local"
-        return local_root, resolved_scope
-
-    if scope == "shared":
-        return (shared_root, "shared") if shared_root is not None else (None, None)
-
-    if local_root is not None:
-        resolved_scope = "shared" if is_shared_workspace(local_root, plugin_slug) else "local"
-        return local_root, resolved_scope
-
     if shared_root is not None:
         return shared_root, "shared"
-
     return None, None
 
 

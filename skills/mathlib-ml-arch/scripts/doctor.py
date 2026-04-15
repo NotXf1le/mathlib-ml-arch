@@ -28,7 +28,7 @@ from common import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Inspect the local Lean/mathlib workspace and emit agent-friendly diagnostics."
+        description="Inspect the shared Lean/mathlib workspace and emit agent-friendly diagnostics."
     )
     parser.add_argument(
         "--workspace",
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         "--scope",
         choices=["auto", "local", "shared"],
         default="auto",
-        help="Which proofs workspace to inspect. `auto` prefers a local proofs/ project and falls back to the shared CODEX_HOME cache.",
+        help="Which proofs workspace to inspect. The plugin is shared-workspace-only; `auto`, `shared`, and legacy `local` all resolve to the shared CODEX_HOME cache.",
     )
     parser.add_argument(
         "--json",
@@ -77,7 +77,12 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
     shared_workspace = find_shared_proofs_root()
     shared_config_root = shared_workspace_root()
     workspace_root, selected_scope = resolve_proofs_workspace(requested_workspace, scope)
-    inspected_root = workspace_root or requested_workspace
+    ignored_local_workspace = (
+        local_workspace
+        if local_workspace is not None and not path_contains(local_workspace, shared_config_root)
+        else None
+    )
+    inspected_root = workspace_root or shared_config_root
     proofs_dir = inspected_root / "proofs"
     lake = find_lake()
     lean = find_lean(lake)
@@ -105,6 +110,7 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
         "selected_scope": selected_scope,
         "requested_scope": scope,
         "local_workspace_root": str(local_workspace) if local_workspace else None,
+        "ignored_local_workspace_root": str(ignored_local_workspace) if ignored_local_workspace else None,
         "shared_workspace_root": str(shared_workspace) if shared_workspace else None,
         "shared_workspace_config_root": str(shared_config_root),
         "shared_workspace_writable": shared_workspace_write_error is None,
@@ -140,20 +146,17 @@ def build_payload(requested_workspace: Path, scope: str) -> dict[str, object]:
     }
 
     next_steps: list[str] = []
+    if ignored_local_workspace is not None:
+        next_steps.append(
+            f"Repo-local proofs at {ignored_local_workspace} are ignored in shared-workspace mode. Remove or archive them if they are stale."
+        )
     if not payload["proofs_exists"]:
-        if scope == "local":
-            next_steps.append("Run bootstrap_proofs.py --scope local to create a repo-local proofs/ project.")
-        elif scope == "shared":
-            next_steps.append(
-                "Run bootstrap_proofs.py --scope shared to create the shared proofs project under CODEX_HOME."
-            )
-        else:
-            next_steps.append(
-                "Run bootstrap_proofs.py to create or refresh the shared proofs project, or use --scope local if this repo needs its own proofs/ directory."
-            )
+        next_steps.append(
+            "Run bootstrap_proofs.py to create or refresh the shared proofs project under CODEX_HOME."
+        )
     if not payload["shared_workspace_writable"]:
         next_steps.append(
-            "The shared CODEX_HOME cache is not writable. Set CODEX_HOME to a writable directory or bootstrap with --scope local."
+            "The shared CODEX_HOME cache is not writable. Set CODEX_HOME to a writable directory."
         )
     if payload["proofs_exists"] and not payload["lean_toolchain_exists"]:
         next_steps.append("Create proofs/lean-toolchain or rerun bootstrap_proofs.py.")
@@ -183,8 +186,9 @@ def print_human(payload: dict[str, object]) -> None:
     selected_root = payload["selected_workspace_root"] or "none"
     selected_scope = payload["selected_scope"] or "none"
     print(f"selected proofs workspace: {selected_root} ({selected_scope})")
-    print(f"local proofs workspace: {payload['local_workspace_root'] or 'missing'}")
     print(f"shared proofs workspace: {payload['shared_workspace_root'] or 'missing'}")
+    if payload.get("ignored_local_workspace_root"):
+        print(f"ignored repo-local proofs workspace: {payload['ignored_local_workspace_root']}")
     print(f"shared cache root: {payload['shared_workspace_config_root']}")
     print(f"shared cache writable: {payload['shared_workspace_writable']}")
     print(f"selected workspace writable: {payload['selected_workspace_writable']}")

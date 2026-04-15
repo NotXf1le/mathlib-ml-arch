@@ -18,7 +18,6 @@ from common import (
     git_safe_directories_for_proofs,
     is_shared_workspace,
     requested_workspace_root,
-    resolve_proofs_workspace,
     shared_workspace_root,
     subprocess_env_for_tool,
     writability_error,
@@ -33,7 +32,7 @@ DEFAULT_SCRATCH = """import Mathlib
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Bootstrap a local proofs/ project, fetch mathlib, and validate the environment."
+        description="Bootstrap the shared proofs/ project, fetch mathlib, and validate the environment."
     )
     parser.add_argument(
         "--workspace",
@@ -43,7 +42,7 @@ def parse_args() -> argparse.Namespace:
         "--scope",
         choices=["auto", "local", "shared"],
         default="auto",
-        help="Where to create or reuse the proofs project. `auto` prefers a repo-local proofs/ project and otherwise uses the shared CODEX_HOME cache.",
+        help="Where to create or reuse the proofs project. The plugin is shared-workspace-only; `auto`, `shared`, and legacy `local` all resolve to the shared CODEX_HOME cache.",
     )
     parser.add_argument(
         "--proofs-dir",
@@ -192,7 +191,7 @@ def failure_guidance(step_name: str, reason: str, selected_scope: str) -> str:
         if selected_scope == "shared":
             return (
                 f"`{step_name}` could not write into the shared workspace. "
-                "Rerun with `python scripts/bootstrap_proofs.py --scope local` or set `CODEX_HOME` to a writable directory."
+                "Set `CODEX_HOME` to a writable directory and rerun bootstrap."
             )
         return (
             f"`{step_name}` could not write into the selected workspace. "
@@ -235,30 +234,12 @@ def select_bootstrap_workspace(
     requested_workspace: Path,
     scope: str,
 ) -> tuple[Path, str, list[str]]:
-    resolved_workspace, resolved_scope = resolve_proofs_workspace(requested_workspace, scope)
     warnings: list[str] = []
-
     if scope == "local":
-        workspace_root = resolved_workspace or requested_workspace
-        selected_scope = "shared" if is_shared_workspace(workspace_root) else "local"
-        return workspace_root, selected_scope, warnings
-
-    if scope == "shared":
-        return shared_workspace_root(), "shared", warnings
-
-    if resolved_workspace is not None:
-        selected_scope = resolved_scope or ("shared" if is_shared_workspace(resolved_workspace) else "local")
-        return resolved_workspace, selected_scope, warnings
-
-    shared_root = shared_workspace_root()
-    shared_error = writability_error(shared_root)
-    if shared_error is None:
-        return shared_root, "shared", warnings
-
-    warnings.append(
-        f"Shared workspace is not writable ({shared_root}): {shared_error}. Falling back to the requested workspace."
-    )
-    return requested_workspace, "local", warnings
+        warnings.append(
+            "Local proofs workspaces are no longer supported. `--scope local` is treated as shared-workspace mode."
+        )
+    return shared_workspace_root(), "shared", warnings
 
 
 def ensure_scratch_file(path: Path) -> None:
@@ -322,6 +303,11 @@ def main() -> int:
     requested_workspace = requested_workspace_root(args.workspace)
     local_workspace = find_existing_proofs_root(requested_workspace)
     workspace_root, selected_scope, selection_warnings = select_bootstrap_workspace(requested_workspace, args.scope)
+    ignored_local_workspace = (
+        local_workspace
+        if local_workspace is not None and not is_shared_workspace(local_workspace)
+        else None
+    )
 
     proofs_dir = (workspace_root / args.proofs_dir).resolve()
     project_name = args.name or default_project_name(workspace_root)
@@ -335,6 +321,7 @@ def main() -> int:
         "workspace_root": str(workspace_root),
         "selected_scope": selected_scope,
         "local_workspace_root": str(local_workspace) if local_workspace else None,
+        "ignored_local_workspace_root": str(ignored_local_workspace) if ignored_local_workspace else None,
         "shared_workspace_root": str(shared_root),
         "shared_workspace_writable": shared_write_error is None,
         "shared_workspace_write_error": shared_write_error,
@@ -357,6 +344,12 @@ def main() -> int:
         "success": False,
         "status": "failure",
     }
+
+    if ignored_local_workspace is not None:
+        append_unique(
+            payload["warnings"],
+            f"Repo-local proofs at {ignored_local_workspace} are ignored in shared-workspace mode.",
+        )
 
     if lake is None:
         append_unique(

@@ -17,6 +17,20 @@ import common  # noqa: E402
 
 
 class CommonTests(unittest.TestCase):
+    def test_resolve_proofs_workspace_ignores_repo_local_and_uses_shared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            requested = root / "workspace"
+            requested.mkdir()
+            (requested / "proofs").mkdir()
+            shared = root / "shared_workspace"
+
+            with patch.object(common, "find_shared_proofs_root", return_value=shared):
+                resolved, scope = common.resolve_proofs_workspace(requested, "local")
+
+            self.assertEqual(resolved, shared)
+            self.assertEqual(scope, "shared")
+
     def test_find_lake_prefers_plugin_cached_binary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             codex_root = Path(tmp) / ".codex"

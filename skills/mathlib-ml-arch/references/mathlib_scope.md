@@ -29,19 +29,19 @@ Use this file to decide whether a claim belongs in the formal layer or outside i
 ## Local Proof Workflow
 
 - The plugin does not ship a pre-fetched standalone `proofs/` project, but it does ship bootstrap and diagnostics helpers plus a shared user-scoped fallback workspace.
-- Start with `python "../../scripts/doctor.py"` when you need to know whether the repo-local or shared environment is ready.
-- If the repo has no usable `proofs/` project, run `python "../../scripts/bootstrap_proofs.py"` before treating formal verification as available.
-- That command creates or reuses `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace/proofs` when the current repo has no local `proofs/` project.
-- If a specific repository must own its own Lean project, use `python "../../scripts/bootstrap_proofs.py" --scope local`.
+- Start with `python "../../scripts/doctor.py"` when you need to know whether the shared environment is ready.
+- If the shared `proofs/` project is missing, run `python "../../scripts/bootstrap_proofs.py"` before treating formal verification as available.
+- That command creates or reuses `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace/proofs`.
+- Repo-local `proofs/` directories are treated as legacy state and ignored by the workspace resolver.
 - This repo is currently pinned to Lean `4.29.0` and `mathlib` `v4.29.0`.
 - Install Lean 4 through `elan` or the direct Windows `Lean` package so `lake` is available.
 - From `proofs/`, run `lake update` only when mathlib sources are missing or you intentionally want to refresh dependencies.
 - Run `lake exe cache get` when compiled `.olean` artifacts are missing.
 - Keep `proofs/lean-toolchain` and `proofs/lakefile.toml` on matching release lines when you intentionally upgrade.
-- `search_mathlib.py` and `lean_check.py` prefer a repo-local `proofs/` project and otherwise fall back to the shared workspace automatically.
+- `search_mathlib.py` and `lean_check.py` use the shared workspace only.
 - `lean_check.py` now treats `lake env lean` as the preferred verification path, direct `lean` with discovered `LEAN_PATH` as an explicit fallback, and records timeouts instead of hanging indefinitely.
 - `eml_normalize.py`, `eml_verify.py`, and `boundary_classify.py` operate on one explicit scalar formula at a time and keep unsupported arithmetic or branch assumptions explicit instead of guessing a witness.
 - The shipped exact EML witness library is currently limited to the scalar subset `{1, var, exp}`. Broader arithmetic coverage must stay in the partial or unsupported bucket until a checked witness exists.
 - Validate finished bundles with `python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"`.
 - On sandboxed Windows runs, the plugin injects temporary `git safe.directory` entries for `proofs/.lake/packages/*` so `lake` can inspect package repos without global git config changes.
-- If neither a repo-local `proofs/` project nor the shared workspace exists and bootstrap is not run, report that no usable Lean project is present and keep mathlib claims in the unverified bucket; do not emit negative-evidence labels solely because the infrastructure is missing.
+- If the shared workspace does not exist and bootstrap is not run, report that no usable Lean project is present and keep mathlib claims in the unverified bucket; do not emit negative-evidence labels solely because the infrastructure is missing.

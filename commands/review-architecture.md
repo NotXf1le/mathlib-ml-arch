@@ -21,8 +21,8 @@ Happy-path demo:
 2. Assign entity signatures and typed interfaces where the design mixes roles.
 3. Run `python scripts/doctor.py` when the local Lean setup is uncertain.
 4. If `doctor.py` reports that `lake` / `lean` are unavailable, run `python scripts/bootstrap_toolchain.py` so the plugin can use a cache-local Lean toolchain.
-5. If the target workspace has no repo-local `proofs/` project and formal checks should be possible, run `python scripts/bootstrap_proofs.py`. That command reuses or creates the shared user-scoped proofs workspace unless the repo explicitly needs `--scope local`.
-6. Search for local or shared mathlib evidence before claiming formal support.
+5. If the shared proofs workspace is missing and formal checks should be possible, run `python scripts/bootstrap_proofs.py`. That command creates or reuses the shared user-scoped proofs workspace.
+6. Search for shared mathlib evidence before claiming formal support.
 7. Verify candidate theorems with `python scripts/lean_check.py`, and record the exact verification method if fallback verification was used.
 8. Separate each claim into formal support, engineering inference, or empirical gap.
 9. Emit the artifact bundle required by the skill contract.
@@ -53,6 +53,6 @@ If Lean verification was unavailable or not run, state that formal support from
 Lean/mathlib was not obtained in this environment instead of presenting that
 case as negative theorem evidence.
 
-If neither a repo-local `proofs/` project nor the shared user-scoped proofs
-workspace exists, state that no usable Lean project is available instead of
-attributing the failure to `lake`, `git`, or theorem search.
+If the shared proofs workspace does not exist yet, state that no usable shared
+Lean project is available instead of attributing the failure to `lake`, `git`,
+or theorem search.

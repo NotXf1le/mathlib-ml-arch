@@ -22,27 +22,15 @@ END_RE = re.compile(r"^\s*end\b")
 
 def missing_proofs_message(scope: str) -> str:
     shared_root = shared_workspace_root()
-    if scope == "shared":
-        return (
-            "No shared Lean proofs project was found. Expected a `proofs/` directory under "
-            f"{shared_root}. Run bootstrap_proofs.py --scope shared first."
-        )
-    if scope == "local":
-        return (
-            "No repo-local Lean proofs project was found. Expected a `proofs/` directory in the current "
-            "workspace or one of its parent directories. Run bootstrap_proofs.py --scope local first."
-        )
-
     return (
-        "No Lean proofs project was found. Checked the current workspace, its parent directories, "
-        f"and the shared CODEX_HOME cache at {shared_root}. Run bootstrap_proofs.py first, or use "
-        "--scope local to require a repo-local proofs/ project."
+        "No shared Lean proofs project was found. Expected a `proofs/` directory under "
+        f"{shared_root}. Run bootstrap_proofs.py first."
     )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Search local proofs and mathlib for theorem-aware candidate matches."
+        description="Search the shared proofs workspace and mathlib for theorem-aware candidate matches."
     )
     parser.add_argument("query", help="Literal text to search for.")
     parser.add_argument(
@@ -53,7 +41,7 @@ def parse_args() -> argparse.Namespace:
         "--scope",
         choices=["auto", "local", "shared"],
         default="auto",
-        help="Which proofs workspace to search. `auto` prefers a repo-local proofs/ project and otherwise uses the shared CODEX_HOME cache.",
+        help="Which proofs workspace to search. The plugin is shared-workspace-only; `auto`, `shared`, and legacy `local` all resolve to the shared CODEX_HOME cache.",
     )
     parser.add_argument(
         "--ignore-case",

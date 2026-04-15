@@ -53,7 +53,7 @@ existing bootstrap/search/check flow:
 - Normalize the formula deterministically
 - Extract typed side conditions (`domain`, `branch`, `totalization`)
 - Attempt pure-EML compilation for the currently shipped exact subset `{1, var, exp}`
-- Generate `ProofScratch.lean`, `report.md`, `evidence.json`, and Mermaid figures
+- Generate a shared scratch Lean file, `report.md`, `evidence.json`, and Mermaid figures
 
 The current EML witness library is intentionally honest: parsing and boundary
 classification cover scalar arithmetic, division, logarithm, and square root,
@@ -90,19 +90,18 @@ When you want a live review instead of the shipped demo:
 
 1. Run `python scripts/doctor.py`.
 2. If `doctor.py` reports that `lake` / `lean` are missing, run `python scripts/bootstrap_toolchain.py` first. That command populates the plugin-local toolchain cache under `$CODEX_HOME/cache/mathlib-ml-arch/toolchains` and falls back to a temp cache when the shared CODEX_HOME root is not writable.
-3. If this repo needs its own Lean project, run `python scripts/bootstrap_proofs.py --scope local`.
-4. Otherwise run `python scripts/bootstrap_proofs.py` and let it create or reuse the shared user-scoped proofs workspace under `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace`.
+3. Run `python scripts/bootstrap_proofs.py` and let it create or reuse the shared user-scoped proofs workspace under `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace`.
 5. Search candidate theorems with `python scripts/search_mathlib.py "<query>"`.
 6. Verify `proofs/ProofScratch.lean` with `python scripts/lean_check.py`.
-7. Both search and verification prefer a repo-local `proofs/` project when one exists and otherwise fall back to the shared workspace automatically.
+7. Search and verification use the shared proofs workspace only. Repo-local `proofs/` directories are ignored as legacy state.
 8. Write `report.md` and `evidence.json`.
 9. Validate the bundle with `python scripts/validate_artifact_bundle.py --bundle-dir <dir>`.
 
 `bootstrap_proofs.py` now performs explicit writability checks before creating a
-shared workspace. In `--scope auto`, it falls back to the requested local
-workspace when the shared CODEX_HOME cache is not writable. The JSON payload and
-human output both record the effective `HOME` / `ELAN_HOME`, warnings, and
-postconditions so partial bootstrap progress is easier to diagnose.
+shared workspace. The JSON payload and human output record the effective `HOME`
+/ `ELAN_HOME`, warnings, and postconditions so partial bootstrap progress is
+easier to diagnose. Repo-local `proofs/` directories are detected and surfaced
+as ignored legacy state instead of being used for verification.
 
 `bootstrap_toolchain.py` prefers a plugin-local toolchain cache before the host
 profile. It first reuses any cached `lake` / `lean`, then tries to copy the
@@ -121,16 +120,16 @@ For formula-specific workflows:
 
 1. Run `python scripts/eml_normalize.py --formula "<expr>"`.
 2. Inspect `artifacts/formula.json`, `artifacts/eml.json`, `figures/eml_tree.mmd`, and `figures/boundary_graph.mmd`.
-3. Run `python scripts/eml_verify.py --formula "<expr>"` when you want a `ProofScratch.lean` attempt plus Lean diagnostics.
+3. Run `python scripts/eml_verify.py --formula "<expr>"` when you want a shared, workspace-namespaced scratch proof attempt plus Lean diagnostics.
 4. Use `python scripts/boundary_classify.py --formula "<expr>"` when you only need typed assumptions without a proof attempt.
 
 When `lake env lean` is unavailable but compiled package libraries exist,
 `lean_check.py` falls back to direct `lean` with discovered `LEAN_PATH` and
 records that verification method explicitly.
 
-If neither a repo-local `proofs/` project nor the shared user-scoped proofs
-workspace exists, the correct output is that formal verification is unavailable
-until bootstrap is run. Do not blame theorem search for that case.
+If the shared user-scoped proofs workspace does not exist, the correct output
+is that formal verification is unavailable until bootstrap is run. Do not blame
+theorem search for that case.
 
 ## Hooks
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,10 +32,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--formula", help="Formula string to verify.")
     parser.add_argument("--formula-file", help="Path to a UTF-8 text file containing the formula.")
-    parser.add_argument("--workspace", help="Workspace root or child directory used to find proofs/.")
+    parser.add_argument("--workspace", help="Workspace root used to derive shared-proof scratch naming and bundle output.")
     parser.add_argument("--output-dir", help="Artifact bundle directory. Defaults to <workspace>/reports/eml_verify.")
-    parser.add_argument("--scope", choices=["auto", "local", "shared"], default="auto", help="Which proofs workspace to use.")
-    parser.add_argument("--scratch-file", default="ProofScratch.lean", help="Lean target inside proofs/ or an absolute Lean file path.")
+    parser.add_argument(
+        "--scope",
+        choices=["auto", "local", "shared"],
+        default="auto",
+        help="Which proofs workspace to use. The plugin is shared-workspace-only; `auto`, `shared`, and legacy `local` all resolve to the shared CODEX_HOME cache.",
+    )
+    parser.add_argument(
+        "--scratch-file",
+        default="ProofScratch.lean",
+        help="Lean target inside proofs/ or an absolute Lean file path. The default is automatically namespaced per workspace in shared-workspace mode.",
+    )
     parser.add_argument("--lean-mode", choices=["auto", "lake", "direct"], default="auto", help="Verification mode forwarded to lean_check.py.")
     parser.add_argument("--timeout-seconds", type=int, default=60, help="Per-command timeout forwarded to lean_check.py.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable output.")
@@ -50,6 +61,13 @@ def resolve_formula(args: argparse.Namespace) -> str:
 
 def default_output_dir(workspace: Path) -> Path:
     return workspace / "reports" / "eml_verify"
+
+
+def default_scratch_relpath(workspace: Path) -> Path:
+    slug_source = workspace.name or "workspace"
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", slug_source).strip("_") or "workspace"
+    digest = hashlib.sha1(str(workspace).encode("utf-8")).hexdigest()[:10]
+    return Path("scratch") / f"ProofScratch_{slug}_{digest}.lean"
 
 
 def run_validator(output_dir: Path) -> dict[str, object]:
@@ -179,6 +197,8 @@ def main() -> int:
         if proofs_root is not None:
             proofs_dir = proofs_root / "proofs"
             scratch_path = Path(args.scratch_file)
+            if args.scratch_file == "ProofScratch.lean":
+                scratch_path = default_scratch_relpath(workspace)
             if not scratch_path.is_absolute():
                 scratch_path = (proofs_dir / scratch_path).resolve()
             scratch_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,7 +214,7 @@ def main() -> int:
             lean_payload = {
                 "success": False,
                 "verification_method": "unavailable:no proofs workspace",
-                "error": "No usable proofs workspace was found. Run bootstrap_proofs.py first.",
+                "error": "No usable shared proofs workspace was found. Run bootstrap_proofs.py first.",
             }
             verification_method = str(lean_payload["verification_method"])
 

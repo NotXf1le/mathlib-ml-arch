@@ -35,23 +35,18 @@ python "../../scripts/doctor.py"
 python "../../scripts/bootstrap_toolchain.py"
 ```
 
-7. If the repo has no usable `proofs/` project and formal checks should be possible, bootstrap before searching:
+7. If the shared `proofs/` project is missing and formal checks should be possible, bootstrap before searching:
 
 ```bash
 python "../../scripts/bootstrap_proofs.py"
 ```
 
-That command prefers a repo-local `proofs/` project when one already exists and otherwise creates or reuses the shared user-scoped workspace under `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace`.
-
-If the repo specifically needs its own Lean project, use:
-
-```bash
-python "../../scripts/bootstrap_proofs.py" --scope local
-```
+That command creates or reuses the shared user-scoped workspace under `$CODEX_HOME/cache/mathlib-ml-arch/shared_workspace`.
+Repo-local `proofs/` directories are treated as legacy state and ignored by the formal-workspace resolver.
 
 If bootstrap is not possible in the current environment, say that formal verification is unavailable here.
 
-8. Search local or shared evidence before making formal claims:
+8. Search shared evidence before making formal claims:
 
 ```bash
 python "../../scripts/search_mathlib.py" "<query>"
@@ -59,7 +54,7 @@ python "../../scripts/search_mathlib.py" "<query>"
 
 Use `--json` when you want machine-readable theorem candidates with names, import paths, and locations.
 
-9. Validate candidate theorems in `proofs/ProofScratch.lean` before citing them as formal support:
+9. Validate candidate theorems in the shared `proofs/` workspace before citing them as formal support:
 
 ```bash
 python "../../scripts/lean_check.py"
@@ -93,7 +88,7 @@ python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"
 - If a theorem only proves a local property, state the exact boundary.
 - If Lean tooling is missing or `lean_check.py` does not succeed, treat the result as unverified.
 - If Lean verification was unavailable or not run, say that formal support from Lean/mathlib was not obtained in this environment. Do not collapse that state into negative theorem evidence.
-- If neither a repo-local `proofs/` project nor the shared user-scoped proofs workspace exists, say that formal verification was unavailable because no usable Lean project was present or bootstrap was not run. Do not attribute that case to theorem failure.
+- If the shared proofs workspace does not exist yet, say that formal verification was unavailable because bootstrap was not run or the shared workspace is unusable. Do not attribute that case to theorem failure.
 - If fallback verification was used, record the exact verification method rather than implying the official `lake env lean` path succeeded.
 - For nontrivial requests, treat the artifact bundle as required rather than optional.
 
@@ -112,12 +107,12 @@ For each cited theorem or definition, record:
 - `references/architecture_contract.md`: required output contract and claim-labeling rules.
 - `references/mathlib_scope.md`: boundaries of what mathlib can and cannot support, plus query ideas and local setup notes.
 - `references/eml_side_conditions.md`: domain, branch, and totalization taxonomy for EML-normalized formulas.
-- `../../scripts/doctor.py`: inspect repo-local and shared Lean/mathlib environments and emit agent-friendly diagnostics.
+- `../../scripts/doctor.py`: inspect the shared Lean/mathlib environment and emit agent-friendly diagnostics, while flagging ignored repo-local `proofs/` directories when they exist.
 - `../../scripts/bootstrap_toolchain.py`: populate a plugin-local Lean/Lake toolchain cache under `CODEX_HOME` so later plugin runs do not depend on the host profile.
-- `../../scripts/bootstrap_proofs.py`: create or reuse a repo-local or shared `proofs/` project, fetch cache when needed, and run a smoke verification pass.
-- `../../scripts/search_mathlib.py`: search the selected repo-local or shared `proofs/` project and any downloaded mathlib checkout for ranked theorem candidates.
-- `../../scripts/lean_check.py`: verify `proofs/ProofScratch.lean` via `lake env lean`, with direct `lean` fallback when the official path is unavailable and command timeouts recorded explicitly.
+- `../../scripts/bootstrap_proofs.py`: create or reuse the shared `proofs/` project, fetch cache when needed, and run a smoke verification pass.
+- `../../scripts/search_mathlib.py`: search the shared `proofs/` project and any downloaded mathlib checkout for ranked theorem candidates.
+- `../../scripts/lean_check.py`: verify a Lean target in the shared `proofs/` project via `lake env lean`, with direct `lean` fallback when the official path is unavailable and command timeouts recorded explicitly.
 - `../../scripts/eml_normalize.py`: parse one explicit scalar formula into CalcLang, emit EML artifacts, and write typed side-condition bundles.
-- `../../scripts/eml_verify.py`: generate `ProofScratch.lean` for the exact shipped EML subset and update evidence metadata with Lean verification status.
+- `../../scripts/eml_verify.py`: generate a workspace-namespaced scratch file in shared `proofs/` for the exact shipped EML subset and update evidence metadata with Lean verification status.
 - `../../scripts/boundary_classify.py`: extract domain, branch, and totalization assumptions into bundle artifacts without claiming Lean proof.
 - `../../scripts/validate_artifact_bundle.py`: validate `report.md` and `evidence.json` directly, without hooks.

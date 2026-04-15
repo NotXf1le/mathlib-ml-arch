@@ -20,28 +20,18 @@ import bootstrap_proofs  # noqa: E402
 
 
 class BootstrapProofsTests(unittest.TestCase):
-    def test_auto_scope_falls_back_to_local_when_shared_cache_is_not_writable(self) -> None:
+    def test_local_scope_aliases_to_shared_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             requested = Path(tmp)
             shared = requested / "shared_workspace"
 
-            with (
-                patch.object(bootstrap_proofs, "resolve_proofs_workspace", return_value=(None, None)),
-                patch.object(bootstrap_proofs, "shared_workspace_root", return_value=shared),
-                patch.object(
-                    bootstrap_proofs,
-                    "writability_error",
-                    side_effect=lambda path: "PermissionError: denied"
-                    if Path(path) == shared
-                    else None,
-                ),
-            ):
-                root, scope, warnings = bootstrap_proofs.select_bootstrap_workspace(requested, "auto")
+            with patch.object(bootstrap_proofs, "shared_workspace_root", return_value=shared):
+                root, scope, warnings = bootstrap_proofs.select_bootstrap_workspace(requested, "local")
 
-            self.assertEqual(root, requested)
-            self.assertEqual(scope, "local")
+            self.assertEqual(root, shared)
+            self.assertEqual(scope, "shared")
             self.assertTrue(warnings)
-            self.assertIn("Falling back", warnings[0])
+            self.assertIn("no longer supported", warnings[0])
 
     def test_classifies_non_writable_elan_home(self) -> None:
         step = {
@@ -66,8 +56,9 @@ class BootstrapProofsTests(unittest.TestCase):
     def test_cache_failure_becomes_warning_when_compiled_libs_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            proofs_dir = workspace / "proofs"
-            proofs_dir.mkdir()
+            shared_root = workspace / "shared_workspace"
+            proofs_dir = shared_root / "proofs"
+            proofs_dir.mkdir(parents=True)
             (proofs_dir / "lean-toolchain").write_text("leanprover/lean4:stable", encoding="utf-8")
             (proofs_dir / "lakefile.toml").write_text("[package]\nname = \"Demo\"\n", encoding="utf-8")
             lib_dir = proofs_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "lib" / "lean"
@@ -91,7 +82,7 @@ class BootstrapProofsTests(unittest.TestCase):
             with (
                 patch.object(bootstrap_proofs, "parse_args", return_value=args),
                 patch.object(bootstrap_proofs, "find_lake", return_value=workspace / "lake.exe"),
-                patch.object(bootstrap_proofs, "shared_workspace_root", return_value=workspace / "shared_workspace"),
+                patch.object(bootstrap_proofs, "shared_workspace_root", return_value=shared_root),
                 patch.object(bootstrap_proofs, "writability_error", return_value=None),
                 patch.object(
                     bootstrap_proofs,
