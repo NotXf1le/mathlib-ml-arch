@@ -17,6 +17,10 @@ Use this output contract whenever the skill is active.
 - `No direct formal support found in mathlib`: No verified theorem or definition supports the claim.
 - `Empirical gap`: The claim depends on benchmarks, hardware, datasets, training dynamics, or product constraints.
 
+Do not use `No direct formal support found in mathlib` when Lean verification
+was unavailable or not run. That state must be reported explicitly as missing
+formal verification, not as negative theorem evidence.
+
 ## Evidence Record
 
 For each cited theorem or definition, record:

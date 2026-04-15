@@ -44,4 +44,4 @@ Use this file to decide whether a claim belongs in the formal layer or outside i
 - The shipped exact EML witness library is currently limited to the scalar subset `{1, var, exp}`. Broader arithmetic coverage must stay in the partial or unsupported bucket until a checked witness exists.
 - Validate finished bundles with `python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"`.
 - On sandboxed Windows runs, the plugin injects temporary `git safe.directory` entries for `proofs/.lake/packages/*` so `lake` can inspect package repos without global git config changes.
-- If neither a repo-local `proofs/` project nor the shared workspace exists and bootstrap is not run, report that no usable Lean project is present and keep all mathlib claims in the unverified or negative-evidence bucket.
+- If neither a repo-local `proofs/` project nor the shared workspace exists and bootstrap is not run, report that no usable Lean project is present and keep mathlib claims in the unverified bucket; do not emit negative-evidence labels solely because the infrastructure is missing.

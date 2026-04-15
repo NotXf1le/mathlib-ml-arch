@@ -89,9 +89,10 @@ python "../../scripts/validate_artifact_bundle.py" --bundle-dir "<dir>"
 ## Hard Rules
 
 - Never call a heuristic "proved".
-- If no supporting theorem is found or verified, write `No direct formal support found in mathlib.`
+- If theorem search or witness coverage really comes up empty, write `No direct formal support found in mathlib.`
 - If a theorem only proves a local property, state the exact boundary.
 - If Lean tooling is missing or `lean_check.py` does not succeed, treat the result as unverified.
+- If Lean verification was unavailable or not run, say that formal support from Lean/mathlib was not obtained in this environment. Do not collapse that state into negative theorem evidence.
 - If neither a repo-local `proofs/` project nor the shared user-scoped proofs workspace exists, say that formal verification was unavailable because no usable Lean project was present or bootstrap was not run. Do not attribute that case to theorem failure.
 - If fallback verification was used, record the exact verification method rather than implying the official `lake env lean` path succeeded.
 - For nontrivial requests, treat the artifact bundle as required rather than optional.

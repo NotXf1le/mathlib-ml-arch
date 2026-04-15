@@ -751,14 +751,22 @@ def report_sections(
         for item in side_conditions
     ) or "- None"
 
-    verification_line = (
-        f"Lean verification succeeded via `{verification_method}`."
-        if verified_in_lean
-        else f"Root-claim Lean verification did not succeed; latest verification path: `{verification_method}`."
-    )
+    verification_status = formal_verification_status(verified_in_lean, verification_method)
+    if verification_status == "verified":
+        verification_line = f"Lean verification succeeded via `{verification_method}`."
+    elif verification_status == "unavailable":
+        verification_line = f"Formal verification was unavailable in this run; latest status: `{verification_method}`."
+    elif verification_status == "not_run":
+        verification_line = "Formal verification was not run in this step."
+    else:
+        verification_line = (
+            "Root-claim Lean verification was attempted but did not succeed; "
+            f"latest verification path: `{verification_method}`."
+        )
     formal_evidence = (
         f"- Exact compile status: `{compile_result['status']}`\n"
         f"- Verified exact subexpressions: `{exact_count}`\n"
+        f"- Formal verification status: `{verification_status}`\n"
         f"- {verification_line}"
     )
 
@@ -803,18 +811,30 @@ def build_evidence_record(
 ) -> dict[str, object]:
     normalized_text = render_calc_expr(normalized_expression)
     unsupported_kinds = sorted({item["kind"] for item in compile_result["uncompiled_nodes"]})
+    verification_status = formal_verification_status(verified_in_lean, verification_method)
 
     if verified_in_lean and compile_result["status"] == "exact":
         claim_label = "Formal support"
         supported_subclaim = f"Exact EML compilation preserves `{normalized_text}` under the shipped scalar witness library."
         unsupported_boundary = "Real-only and floating-point claims still require explicit side conditions and runtime checks."
     elif compile_result["status"] == "exact":
-        claim_label = "No direct formal support found in mathlib"
-        supported_subclaim = f"An exact EML witness exists for `{normalized_text}`, but the root Lean verification did not succeed in this run."
-        unsupported_boundary = (
-            "The exact root proof remains unverified because Lean did not confirm the generated scratch file via "
-            f"`{verification_method}`."
+        claim_label = "Partial formal support"
+        supported_subclaim = (
+            f"`{normalized_text}` compiles exactly into the shipped scalar EML witness subset, "
+            "so the root claim is structurally eligible for Lean checking."
         )
+        if verification_status == "unavailable":
+            unsupported_boundary = (
+                "No checked root theorem was obtained because the Lean proofs workspace was unavailable in this run "
+                f"(`{verification_method}`)."
+            )
+        elif verification_status == "not_run":
+            unsupported_boundary = "No checked root theorem was obtained because Lean verification was not run in this step."
+        else:
+            unsupported_boundary = (
+                "No checked root theorem was obtained because the generated scratch proof did not verify via "
+                f"`{verification_method}`."
+            )
     elif compile_result["exact_subexpressions"]:
         claim_label = "Partial formal support"
         supported_subclaim = (
@@ -835,10 +855,23 @@ def build_evidence_record(
         "claim_label": claim_label,
         "verified_in_lean": verified_in_lean,
         "verification_method": verification_method,
+        "formal_verification_status": verification_status,
         "side_conditions": side_conditions,
         "normalized_formula": normalized_text,
         "compile_status": compile_result["status"],
     }
+
+
+def formal_verification_status(verified_in_lean: bool, verification_method: str | None) -> str:
+    if verified_in_lean:
+        return "verified"
+
+    method = (verification_method or "").strip()
+    if not method or method == "not_run":
+        return "not_run"
+    if method.startswith("unavailable:"):
+        return "unavailable"
+    return "attempted_but_failed"
 
 
 def ensure_bundle_layout(output_dir: Path) -> dict[str, Path]:

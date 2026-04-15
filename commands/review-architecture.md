@@ -45,9 +45,13 @@ plugin root. Sample/demo artifacts belong in `fixtures/review-architecture/`.
 Add `session_log.json` when bootstrap or verification diagnostics are part of
 the audit trail.
 
-If no theorem or definition can be verified, state:
+If theorem search or witness coverage comes up empty, state:
 
 `No direct formal support found in mathlib.`
+
+If Lean verification was unavailable or not run, state that formal support from
+Lean/mathlib was not obtained in this environment instead of presenting that
+case as negative theorem evidence.
 
 If neither a repo-local `proofs/` project nor the shared user-scoped proofs
 workspace exists, state that no usable Lean project is available instead of
