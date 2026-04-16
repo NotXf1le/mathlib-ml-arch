@@ -9,6 +9,8 @@ from pathlib import Path
 
 import doctor
 from common import configure_stdout, requested_workspace_root
+from script_output import PayloadEmitter, append_unique as append_unique_message
+from setup_workflow import SetupPlanner, SetupWorkflow, SetupWorkflowDependencies
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,21 +52,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def append_unique(items: list[str], message: str | None) -> None:
-    if message and message not in items:
-        items.append(message)
+    append_unique_message(items, message)
 
 
 def target_ready(payload: dict[str, object], target: str) -> bool:
-    key = "ready_for_verification" if target == "verify" else "ready_for_search"
-    return bool(payload.get(key))
+    return SetupPlanner.target_ready(payload, target)
 
 
 def readiness_level(payload: dict[str, object]) -> str:
-    if bool(payload.get("ready_for_verification")):
-        return "verification-ready"
-    if bool(payload.get("ready_for_search")):
-        return "search-ready"
-    return "incomplete"
+    return SetupPlanner.readiness_level(payload)
 
 
 def render_progress(index: int, total: int) -> str:
@@ -76,68 +72,14 @@ def render_progress(index: int, total: int) -> str:
 
 
 def missing_requirements(payload: dict[str, object], target: str) -> list[str]:
-    missing: list[str] = []
-    if not bool(payload.get("shared_workspace_writable")):
-        append_unique(missing, "shared CODEX_HOME workspace is not writable")
-    if payload.get("lake_path") is None:
-        append_unique(missing, "lake is unavailable to the plugin")
-    if target == "verify" and payload.get("lean_path") is None:
-        append_unique(missing, "lean is unavailable to the plugin")
-    if not bool(payload.get("proofs_exists")):
-        append_unique(missing, "shared proofs workspace is missing")
-    if not bool(payload.get("mathlib_source_exists")):
-        append_unique(missing, "mathlib sources are missing")
-    if bool(payload.get("proofs_exists")) and bool(payload.get("mathlib_source_exists")) and not bool(payload.get("toolchain_compatible")):
-        append_unique(missing, "shared mathlib checkout does not match the project toolchain")
-    if target == "verify" and int(payload.get("package_library_path_count", 0)) == 0:
-        append_unique(missing, "compiled package libraries are missing")
-    if target == "verify" and not bool(payload.get("mathlib_artifact_exists")):
-        append_unique(missing, "Mathlib.olean is missing")
-    if (
-        target == "verify"
-        and bool(payload.get("verification_smoke_checked"))
-        and payload.get("verification_smoke_success") is False
-    ):
-        append_unique(missing, "the shared Mathlib import smoke check is failing")
-    return missing
+    return SetupPlanner.missing_requirements(payload, target)
 
 
 def planned_steps(payload: dict[str, object], target: str, timeout_seconds: int) -> list[dict[str, object]]:
-    steps: list[dict[str, object]] = []
-    needs_search_workspace = not bool(payload.get("ready_for_search"))
-    needs_verify_workspace = target == "verify" and not bool(payload.get("ready_for_verification"))
-    needs_toolchain = (
-        (needs_search_workspace and payload.get("lake_path") is None)
-        or (target == "verify" and payload.get("lean_path") is None)
-    )
-
-    if needs_toolchain:
-        steps.append(
-            {
-                "label": "Bootstrap Lean toolchain",
-                "script": "bootstrap_toolchain.py",
-                "args": ["--timeout-seconds", str(timeout_seconds)],
-            }
-        )
-
-    if target == "search" and needs_search_workspace:
-        steps.append(
-            {
-                "label": "Prepare shared search workspace",
-                "script": "bootstrap_proofs.py",
-                "args": ["--target", "search", "--skip-verify", "--timeout-seconds", str(timeout_seconds)],
-            }
-        )
-    elif target == "verify" and needs_verify_workspace:
-        steps.append(
-            {
-                "label": "Prepare shared verification workspace",
-                "script": "bootstrap_proofs.py",
-                "args": ["--target", "verify", "--timeout-seconds", str(timeout_seconds)],
-            }
-        )
-
-    return steps
+    return [
+        {"label": step.label, "script": step.script, "args": list(step.args)}
+        for step in SetupPlanner.planned_steps(payload, target, timeout_seconds)
+    ]
 
 
 def step_command(script_name: str, workspace_root: Path, args: list[str]) -> list[str]:
@@ -223,67 +165,27 @@ def print_human(payload: dict[str, object]) -> None:
 
 
 def emit_payload(args: argparse.Namespace, payload: dict[str, object]) -> None:
-    if args.json:
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print_human(payload)
+    PayloadEmitter(json_enabled=args.json, human_printer=print_human).emit(payload)
+
+
+def _workflow() -> SetupWorkflow:
+    return SetupWorkflow(
+        SetupWorkflowDependencies(
+            build_preflight=doctor.build_payload,
+            run_step=run_json_step,
+        )
+    )
 
 
 def main() -> int:
     configure_stdout()
     args = parse_args()
     workspace_root = requested_workspace_root(args.workspace)
-    preflight = doctor.build_payload(workspace_root, "shared")
-    before_readiness = str(preflight.get("readiness_level") or readiness_level(preflight))
-    payload: dict[str, object] = {
-        "requested_workspace": str(workspace_root),
-        "target": args.target,
-        "check_only": args.check_only,
-        "auto_confirmed": args.yes,
-        "preflight": preflight,
-        "readiness_before": before_readiness,
-        "readiness_after": before_readiness,
-        "missing_requirements": missing_requirements(preflight, args.target),
-        "planned_steps": [],
-        "steps": [],
-        "next_steps": list(preflight.get("next_steps", [])),
-        "success": False,
-        "status": "failure",
-    }
+    workflow = _workflow()
+    payload, return_code = workflow.execute(args, workspace_root)
 
-    if target_ready(preflight, args.target):
-        payload["success"] = True
-        payload["status"] = "success"
-        emit_payload(args, payload)
-        return 0
-
-    steps = planned_steps(preflight, args.target, args.timeout_seconds)
-    payload["planned_steps"] = [str(step["label"]) for step in steps]
-
-    if args.check_only:
-        payload["status"] = "needs_setup"
-        emit_payload(args, payload)
-        return 1
-
-    if not bool(preflight.get("shared_workspace_writable")):
-        payload["status"] = "blocked"
-        emit_payload(args, payload)
-        return 3
-
-    if not steps:
-        payload["status"] = "blocked"
-        emit_payload(args, payload)
-        return 3
-
-    if args.json and not args.yes:
-        payload["status"] = "needs_confirmation"
-        payload["next_steps"] = [
-            f"Rerun `python scripts/setup_plugin.py --target {args.target} --yes` when you want to apply setup changes."
-        ]
-        emit_payload(args, payload)
-        return 4
-
-    if not args.yes:
+    if return_code == -1:
+        steps = planned_steps(payload["preflight"], args.target, args.timeout_seconds)
         print(f"{render_progress(1, len(steps) + 1)} Preflight complete")
         if payload["missing_requirements"]:
             print("Setup will address:")
@@ -296,58 +198,11 @@ def main() -> int:
             ]
             emit_payload(args, payload)
             return 4
-
-    total_phases = len(steps) + 1
-    if args.yes and not args.json:
-        print(f"{render_progress(1, total_phases)} Preflight complete")
-
-    for index, step in enumerate(steps, start=2):
-        if not args.json:
-            print(f"{render_progress(index, total_phases)} {step['label']}")
-        step_payload = run_json_step(
-            str(step["script"]),
-            workspace_root,
-            [str(arg) for arg in step["args"]],
-            timeout_seconds=args.timeout_seconds,
-        )
-        payload["steps"].append(
-            {
-                "label": str(step["label"]),
-                "script": str(step["script"]),
-                "success": bool(step_payload.get("success")),
-                "status": step_payload.get("status"),
-                "exit_code": step_payload.get("exit_code"),
-                "payload": step_payload,
-            }
-        )
-        current = doctor.build_payload(workspace_root, "shared")
-        payload["readiness_after"] = str(current.get("readiness_level") or readiness_level(current))
-        if not bool(step_payload.get("success")) and not target_ready(current, args.target):
-            payload["next_steps"] = list(current.get("next_steps", []))
-            for next_step in step_payload.get("next_steps", []):
-                append_unique(payload["next_steps"], str(next_step))
-            payload["status"] = "partial_success" if bool(current.get("ready_for_search")) else "failure"
-            payload["success"] = False
-            emit_payload(args, payload)
-            return 5
-
-    final_preflight = doctor.build_payload(workspace_root, "shared")
-    payload["preflight_after"] = final_preflight
-    payload["readiness_after"] = str(final_preflight.get("readiness_level") or readiness_level(final_preflight))
-    payload["next_steps"] = list(final_preflight.get("next_steps", []))
-    payload["success"] = target_ready(final_preflight, args.target)
-    if payload["success"]:
-        payload["status"] = "success"
-        return_code = 0
-    elif bool(final_preflight.get("ready_for_search")):
-        payload["status"] = "partial_success"
-        return_code = 5
-    else:
-        payload["status"] = "failure"
-        return_code = 5
+        args.yes = True
+        payload, return_code = workflow.execute(args, workspace_root)
 
     emit_payload(args, payload)
-    return return_code
+    return int(return_code)
 
 
 if __name__ == "__main__":

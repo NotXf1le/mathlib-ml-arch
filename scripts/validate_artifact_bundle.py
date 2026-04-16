@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
+
+from artifact_bundle_service import (
+    ArtifactBundleValidator,
+    ArtifactResolutionDependencies,
+    ArtifactTargetResolver,
+    candidate_report_dirs as service_candidate_report_dirs,
+    latest_report as service_latest_report,
+    report_in_bundle_dir as service_report_in_bundle_dir,
+)
+from script_output import PayloadEmitter
 
 
 REQUIRED_SECTIONS = [
@@ -86,162 +95,49 @@ def parse_args() -> argparse.Namespace:
 
 
 def candidate_report_dirs(workspace_root: Path) -> list[Path]:
-    candidates = [plugin_root() / "reports", workspace_root / "reports"]
-    return [path.resolve() for path in candidates if path.exists()]
+    return service_candidate_report_dirs(plugin_root(), workspace_root)
 
 
 def latest_report(candidate_dirs: list[Path]) -> Path | None:
-    reports: list[Path] = []
-    for directory in candidate_dirs:
-        reports.extend(
-            path
-            for path in directory.rglob("*")
-            if path.is_file() and (path.name == "report.md" or re.fullmatch(r"architecture_audit_report.*\.md", path.name))
-        )
-    if not reports:
-        return None
-    return max(reports, key=lambda path: path.stat().st_mtime)
+    return service_latest_report(candidate_dirs)
 
 
 def report_in_bundle_dir(bundle_dir: Path) -> Path | None:
-    if not bundle_dir.exists():
-        return None
-
-    report = bundle_dir / "report.md"
-    if report.exists():
-        return report
-
-    candidates = [
-        path
-        for path in bundle_dir.iterdir()
-        if path.is_file() and re.fullmatch(r"architecture_audit_report.*\.md", path.name)
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+    return service_report_in_bundle_dir(bundle_dir)
 
 
 def resolve_targets(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
-    if args.bundle_dir:
-        bundle_dir = Path(args.bundle_dir).expanduser().resolve()
-        report = report_in_bundle_dir(bundle_dir)
-        evidence = Path(args.evidence).expanduser().resolve() if args.evidence else bundle_dir / "evidence.json"
-        return report, evidence
-
-    if args.report:
-        report = Path(args.report).expanduser().resolve()
-        evidence = Path(args.evidence).expanduser().resolve() if args.evidence else report.with_name("evidence.json")
-        return report, evidence
-
-    if args.latest:
-        workspace_root = Path(args.workspace).expanduser().resolve() if args.workspace else default_workspace_root()
-        report = latest_report(candidate_report_dirs(workspace_root))
-        if report is None:
-            return None, None
-        evidence = Path(args.evidence).expanduser().resolve() if args.evidence else report.with_name("evidence.json")
-        return report, evidence
-
-    return None, None
+    targets = ArtifactTargetResolver(
+        ArtifactResolutionDependencies(
+            plugin_root=plugin_root,
+            default_workspace_root=default_workspace_root,
+        )
+    ).resolve(args)
+    return targets.report_path, targets.evidence_path
 
 
 def heading_positions(report_text: str) -> dict[str, int]:
-    positions: dict[str, int] = {}
-    for section in REQUIRED_SECTIONS:
-        match = re.search(rf"^\s{{0,3}}##\s+{re.escape(section)}\s*$", report_text, flags=re.MULTILINE)
-        positions[section] = match.start() if match else -1
-    return positions
+    return _validator().heading_positions(report_text)
 
 
 def validate_report(report_path: Path) -> tuple[list[str], dict[str, int]]:
-    issues: list[str] = []
-    if not report_path.exists():
-        return [f"Missing report file: {report_path}"], {}
-
-    report_text = report_path.read_text(encoding="utf-8")
-    positions = heading_positions(report_text)
-
-    missing = [section for section, position in positions.items() if position < 0]
-    for section in missing:
-        issues.append(f"Missing section: {section}")
-
-    last_position = -1
-    for section in REQUIRED_SECTIONS:
-        position = positions.get(section, -1)
-        if position < 0:
-            continue
-        if position < last_position:
-            issues.append(f"Section out of order: {section}")
-        last_position = position
-
-    return issues, positions
+    return _validator().validate_report(report_path)
 
 
 def load_evidence_records(payload: object) -> list[dict[str, object]]:
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if isinstance(payload, dict):
-        records = payload.get("records")
-        if isinstance(records, list):
-            return [item for item in records if isinstance(item, dict)]
-        claims = payload.get("claims")
-        if isinstance(claims, list):
-            return [item for item in claims if isinstance(item, dict)]
-    return []
+    return _validator().load_evidence_records(payload)
 
 
 def validate_evidence(evidence_path: Path) -> tuple[list[str], list[dict[str, object]]]:
-    issues: list[str] = []
-    if not evidence_path.exists():
-        return [f"Missing evidence file: {evidence_path}"], []
+    return _validator().validate_evidence(evidence_path)
 
-    try:
-        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return [f"evidence.json is not valid JSON: {exc.msg}"], []
 
-    records = load_evidence_records(payload)
-    if not records:
-        issues.append("evidence.json should be an array or expose non-empty records/claims.")
-        return issues, records
-
-    for index, record in enumerate(records, start=1):
-        for field in REQUIRED_EVIDENCE_FIELDS:
-            value = record.get(field)
-            if value is None or (isinstance(value, str) and not value.strip()):
-                issues.append(f"Evidence record {index} is missing '{field}'.")
-
-        verified = record.get("verified_in_lean")
-        if not isinstance(verified, bool):
-            issues.append(f"Evidence record {index} must set 'verified_in_lean' to true or false.")
-
-        verification_method = record.get("verification_method")
-        if not isinstance(verification_method, str) or not verification_method.strip():
-            issues.append(f"Evidence record {index} must set a non-empty 'verification_method'.")
-
-        side_conditions = record.get("side_conditions")
-        if not isinstance(side_conditions, list):
-            issues.append(f"Evidence record {index} must provide 'side_conditions' as an array.")
-        else:
-            for condition_index, condition in enumerate(side_conditions, start=1):
-                if not isinstance(condition, dict):
-                    issues.append(
-                        f"Evidence record {index} side condition {condition_index} must be an object."
-                    )
-                    continue
-                for field in REQUIRED_SIDE_CONDITION_FIELDS:
-                    value = condition.get(field)
-                    if value is None or (isinstance(value, str) and not value.strip()):
-                        issues.append(
-                            f"Evidence record {index} side condition {condition_index} is missing '{field}'."
-                        )
-
-        claim_label = str(record.get("claim_label", "")).casefold()
-        if claim_label == "formal support" and verified is not True:
-            issues.append(
-                f"Evidence record {index} cannot use 'Formal support' when 'verified_in_lean' is false."
-            )
-
-    return issues, records
+def _validator() -> ArtifactBundleValidator:
+    return ArtifactBundleValidator(
+        required_sections=REQUIRED_SECTIONS,
+        required_evidence_fields=REQUIRED_EVIDENCE_FIELDS,
+        required_side_condition_fields=REQUIRED_SIDE_CONDITION_FIELDS,
+    )
 
 
 def summary_from_records(records: list[dict[str, object]]) -> dict[str, object]:
@@ -293,10 +189,7 @@ def main() -> int:
             "evidence_path": None,
             "issues": ["No artifact bundle could be located."],
         }
-        if args.json:
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print_human(payload)
+        PayloadEmitter(json_enabled=args.json, human_printer=print_human).emit(payload)
         return 2
 
     report_issues, _ = validate_report(report_path)
@@ -312,10 +205,7 @@ def main() -> int:
         **summary,
     }
 
-    if args.json:
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print_human(payload)
+    PayloadEmitter(json_enabled=args.json, human_printer=print_human).emit(payload)
 
     return 0 if payload["valid"] else 1
 

@@ -31,6 +31,8 @@ from common import (
     subprocess_env_for_tool,
     writability_error,
 )
+from process_runner import CommandSpec, SubprocessRunner, coerce_text
+from script_output import PayloadEmitter, append_unique as append_unique_message
 
 
 DEFAULT_SCRATCH = """import Mathlib
@@ -103,23 +105,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def _coerce_text(value: object) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return str(value)
+    return coerce_text(value)
 
 
 def append_unique(items: list[str], message: str | None) -> None:
-    if message and message not in items:
-        items.append(message)
+    append_unique_message(items, message)
 
 
 def emit_payload(args: argparse.Namespace, payload: dict[str, object]) -> None:
-    if args.json:
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print_human(payload)
+    PayloadEmitter(json_enabled=args.json, human_printer=print_human).emit(payload)
 
 
 def run_command(
@@ -128,46 +122,15 @@ def run_command(
     env: dict[str, str],
     timeout_seconds: int,
 ) -> dict[str, object]:
-    started = time.perf_counter()
-    try:
-        result = subprocess.run(
-            command,
+    return SubprocessRunner().run(
+        CommandSpec(
+            command=command,
             cwd=cwd,
             env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
+            timeout_seconds=timeout_seconds,
+            include_duration=True,
         )
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        return {
-            "command": command,
-            "cwd": str(cwd),
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "success": result.returncode == 0,
-            "timed_out": False,
-            "timeout_seconds": timeout_seconds,
-            "duration_ms": duration_ms,
-        }
-    except subprocess.TimeoutExpired as exc:
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        return {
-            "command": command,
-            "cwd": str(cwd),
-            "returncode": None,
-            "stdout": _coerce_text(exc.stdout),
-            "stderr": (
-                f"{_coerce_text(exc.stderr).rstrip()}\nCommand timed out after {timeout_seconds} seconds."
-            ).strip(),
-            "success": False,
-            "timed_out": True,
-            "timeout_seconds": timeout_seconds,
-            "duration_ms": duration_ms,
-        }
+    )
 
 
 def classify_step_failure(step: dict[str, object]) -> str:

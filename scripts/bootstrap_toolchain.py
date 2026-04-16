@@ -1,11 +1,8 @@
 ﻿from __future__ import annotations
 
 import argparse
-import json
 import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 from common import (
@@ -18,6 +15,9 @@ from common import (
     subprocess_env_for_tool,
     writability_error,
 )
+from process_runner import CommandSpec, SubprocessRunner, detect_tool_version as probe_tool_version
+from script_output import PayloadEmitter, append_unique as append_unique_message
+from toolchain_bootstrap_service import ToolchainBootstrapDependencies, ToolchainBootstrapService
 
 
 def plugin_root() -> Path:
@@ -58,39 +58,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def detect_tool_version(tool: Path | None) -> str | None:
-    if tool is None:
-        return None
-
-    try:
-        result = subprocess.run(
-            [str(tool), "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-            env=subprocess_env_for_tool(tool),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-
-    output = (result.stdout or result.stderr).strip()
-    if not output:
-        return None
-    return output.splitlines()[0]
+    return probe_tool_version(tool, subprocess_env_for_tool)
 
 
 def append_unique(items: list[str], message: str | None) -> None:
-    if message and message not in items:
-        items.append(message)
+    append_unique_message(items, message)
 
 
 def emit_payload(args: argparse.Namespace, payload: dict[str, object]) -> None:
-    if args.json:
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
-        print_human(payload)
+    PayloadEmitter(json_enabled=args.json, human_printer=print_human).emit(payload)
 
 
 def run_command(
@@ -99,41 +75,8 @@ def run_command(
     env: dict[str, str],
     timeout_seconds: int,
 ) -> dict[str, object]:
-    try:
-        result = subprocess.run(
-            command,
-            cwd=cwd,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-        )
-        return {
-            "command": command,
-            "cwd": str(cwd),
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "success": result.returncode == 0,
-            "timed_out": False,
-            "timeout_seconds": timeout_seconds,
-        }
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
-        return {
-            "command": command,
-            "cwd": str(cwd),
-            "returncode": None,
-            "stdout": stdout,
-            "stderr": f"{stderr.rstrip()}\nCommand timed out after {timeout_seconds} seconds.".strip(),
-            "success": False,
-            "timed_out": True,
-            "timeout_seconds": timeout_seconds,
-        }
+    runner = SubprocessRunner()
+    return runner.run(CommandSpec(command=command, cwd=cwd, env=env, timeout_seconds=timeout_seconds))
 
 
 def build_tool_env(elan: Path, target_home: Path, target_elan_home: Path) -> dict[str, str]:
@@ -241,122 +184,24 @@ def print_human(payload: dict[str, object]) -> None:
 def main() -> int:
     configure_stdout()
     args = parse_args()
-    target_home, target_elan_home = resolve_fallback_tool_homes()
-    payload: dict[str, object] = {
-        "status": "failure",
-        "target_home": str(target_home),
-        "target_elan_home": str(target_elan_home),
-        "source_elan_path": None,
-        "cached_elan_path": None,
-        "cached_lake_path": None,
-        "cached_lean_path": None,
-        "cached_lake_version": None,
-        "cached_lean_version": None,
-        "steps": [],
-        "warnings": [],
-        "next_steps": [],
-        "success": False,
-    }
-
-    home_error = writability_error(target_home)
-    elan_error = writability_error(target_elan_home)
-    if home_error is not None and not prepare_writable_directory(target_home):
-        append_unique(payload["next_steps"], f"Tool HOME is not writable: {target_home} ({home_error}).")
-    if elan_error is not None and not prepare_writable_directory(target_elan_home):
-        append_unique(payload["next_steps"], f"ELAN_HOME is not writable: {target_elan_home} ({elan_error}).")
-    if payload["next_steps"]:
-        append_unique(
-            payload["next_steps"],
-            "Set CODEX_HOME to a writable directory and rerun bootstrap_toolchain.py.",
+    payload, exit_code = ToolchainBootstrapService(
+        ToolchainBootstrapDependencies(
+            resolve_fallback_tool_homes=resolve_fallback_tool_homes,
+            writability_error=writability_error,
+            prepare_writable_directory=prepare_writable_directory,
+            refresh_cached_tools=refresh_cached_tools,
+            find_elan=find_elan,
+            cache_elan_binary=cache_elan_binary,
+            active_toolchain_root=active_toolchain_root,
+            copy_toolchain_tree=copy_toolchain_tree,
+            safe_resolve=safe_resolve,
+            build_tool_env=build_tool_env,
+            run_command=run_command,
+            plugin_root=plugin_root,
         )
-        emit_payload(args, payload)
-        return 3
-
-    _, cached_lake, cached_lean = refresh_cached_tools(payload)
-    if cached_lake is not None and cached_lean is not None and not args.force:
-        payload["success"] = True
-        payload["status"] = "success"
-        emit_payload(args, payload)
-        return 0
-
-    elan = find_elan()
-    payload["source_elan_path"] = str(elan) if elan else None
-    if elan is None:
-        append_unique(
-            payload["next_steps"],
-            "No `elan` executable was found. Install Lean once globally or provide a portable `elan` binary, then rerun bootstrap_toolchain.py.",
-        )
-        emit_payload(args, payload)
-        return 2
-
-    cached_elan = cache_elan_binary(elan, target_elan_home)
-    payload["steps"].append(
-        {
-            "name": "cache elan binary",
-            "success": True,
-            "stdout": f"Cached elan at {cached_elan}.",
-            "stderr": "",
-            "returncode": 0,
-        }
-    )
-
-    active_root, host_step = active_toolchain_root(elan, args.timeout_seconds)
-    payload["steps"].append(host_step)
-    if active_root is not None:
-        copied_root, copy_step = copy_toolchain_tree(active_root, target_elan_home, args.force)
-        payload["steps"].append(copy_step)
-        if safe_resolve(copied_root) == safe_resolve(active_root):
-            append_unique(
-                payload["warnings"],
-                "The active Lean toolchain was already under the plugin cache; no host-to-cache copy was needed.",
-            )
-
-    _, cached_lake, cached_lean = refresh_cached_tools(payload)
-    if (cached_lake is None or cached_lean is None) and not args.skip_install:
-        target_elan = cached_elan if cached_elan.exists() else elan
-        tool_env = build_tool_env(target_elan, target_home, target_elan_home)
-        install_step = run_command(
-            [str(target_elan), "toolchain", "install", args.toolchain],
-            cwd=plugin_root(),
-            env=tool_env,
-            timeout_seconds=args.timeout_seconds,
-        )
-        install_step["name"] = "elan toolchain install"
-        payload["steps"].append(install_step)
-
-        if install_step["success"]:
-            default_step = run_command(
-                [str(target_elan), "default", args.toolchain],
-                cwd=plugin_root(),
-                env=tool_env,
-                timeout_seconds=args.timeout_seconds,
-            )
-            default_step["name"] = "elan default"
-            payload["steps"].append(default_step)
-            if not default_step["success"]:
-                append_unique(
-                    payload["warnings"],
-                    "`elan default` did not complete cleanly. The plugin will still use direct toolchain binaries when they are present in the cache.",
-                )
-
-    _, cached_lake, cached_lean = refresh_cached_tools(payload)
-    payload["success"] = cached_lake is not None and cached_lean is not None
-    payload["status"] = "success" if payload["success"] else "failure"
-
-    if not payload["success"]:
-        if args.skip_install:
-            append_unique(
-                payload["next_steps"],
-                "No cached `lake` / `lean` binaries were produced from the active host toolchain. Rerun without `--skip-install` to let `elan` install into the plugin cache.",
-            )
-        else:
-            append_unique(
-                payload["next_steps"],
-                "The plugin-local toolchain is still incomplete. Check the `elan` stderr above and rerun once network access or toolchain installation is available.",
-            )
-
+    ).bootstrap(args)
     emit_payload(args, payload)
-    return 0 if payload["success"] else 5
+    return exit_code
 
 
 if __name__ == "__main__":
