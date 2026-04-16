@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>ML Archer</title>
+  <defs>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="#0F172A"/>
+  <circle cx="128" cy="128" r="74" fill="none" stroke="url(#ring)" stroke-width="16"/>
+  <circle cx="128" cy="128" r="22" fill="#38BDF8"/>
+  <path d="M72 176C72 112 106 74 166 60" fill="none" stroke="#E2E8F0" stroke-linecap="round" stroke-width="12"/>
+  <path d="M118 138L198 82" fill="none" stroke="#F8FAFC" stroke-linecap="round" stroke-width="14"/>
+  <path d="M182 78L212 74L196 100" fill="none" stroke="#F59E0B" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"/>
+</svg>

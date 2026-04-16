@@ -3,8 +3,12 @@
   "version": "2.0.0",
   "description": "Tomography-first ML architecture analysis with an explicit Lean/mathlib verification addon.",
   "author": {
-    "name": "Felix"
+    "name": "Felix",
+    "url": "https://github.com/NotXf1le"
   },
+  "homepage": "https://github.com/NotXf1le/mathlib-ml-arch",
+  "repository": "https://github.com/NotXf1le/mathlib-ml-arch",
+  "license": "Apache-2.0",
   "keywords": [
     "ml-archer",
     "architecture",
@@ -17,17 +21,25 @@
   "interface": {
     "displayName": "🎯 ML Archer",
     "shortDescription": "Tomography first, formal verification only by explicit opt-in",
-    "longDescription": "Default flow is typed architecture tomography. Lean/mathlib verification is a separate addon for narrow subclaims and never replaces structural analysis.",
+    "longDescription": "Default flow is typed architecture tomography. Lean and mathlib verification stay in a separate addon for narrow subclaims and never replace structural analysis.",
     "developerName": "Felix",
     "category": "Productivity",
     "capabilities": [
+      "Interactive",
       "Read",
       "Write"
     ],
+    "websiteURL": "https://github.com/NotXf1le/mathlib-ml-arch",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
     "defaultPrompt": [
-      "Decompose this ML architecture into typed states, matrices, invariants, shortcut risks, and formalization candidates",
-      "Audit this ML architecture and separate structural findings, formalization candidates, engineering inference, and empirical gaps",
-      "Use the formal addon only if the user explicitly requests Lean or mathlib verification"
-    ]
+      "Map this ML architecture into typed states, operators, losses, and shortcut risks",
+      "Audit this training graph for reachability gaps, invariants, and train infer drift",
+      "Use Lean or mathlib only for narrow claims that I explicitly ask to verify"
+    ],
+    "brandColor": "#0F172A",
+    "composerIcon": "./assets/ml-archer-small.svg",
+    "logo": "./assets/ml-archer.svg",
+    "screenshots": []
   }
 }
